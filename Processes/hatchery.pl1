@@ -4,6 +4,25 @@
 %replace SUCCESS                        by      1;
 %replace FAILURE                        by      0;
 %replace ASYNC_header                   by    250;
+%replace WELCOME_DESK                   by   5001;
+%replace HELP_ROOM                      by   5002;
+
+%replace MALE_HEAD_COUNT by 80;
+declare allowed_male_heads(MALE_HEAD_COUNT) bin(15) external static init(
+               1,   3,   4,   5,   7,   9,  11,  25,  27,  33,
+              41,  45,  46,  47,  51,  53,  55,  62,  63,  66,
+              67,  68,  69,  73,  79,  82,  83,  90,  94, 102,
+             107, 112, 120, 130, 140, 146, 151, 152, 155, 159,
+             162, 163, 164, 165, 166, 168, 170, 173, 174, 175,
+             176, 177, 179, 180, 181, 182, 184, 185, 186, 187,
+             188, 191, 192, 193, 195, 196, 197, 200, 201, 202,
+             203, 205, 206, 207, 208, 212, 216, 217, 219, 220);
+%replace FEMALE_HEAD_COUNT by 35;
+declare allowed_female_heads(FEMALE_HEAD_COUNT) bin(15) external static init(
+               2,  21,  30,  48,  56,  58,  64,  65,  71,  80,
+              84,  87,  89,  96,   2, 113, 131, 157, 161, 167,
+             169, 171, 172, 183, 189, 194, 198, 199, 209, 210,
+             211, 213, 214, 215, 218);
 
 %replace wait_forever                   by     -1;
 %replace Separation_Char                by    144;
@@ -13,7 +32,6 @@
 
 %replace DEBUGGING            by '1'b;
 
-declare  c$attach_link        entry (char(*) var, char(*) var, bin(15), bin(15));
 declare  s$allocate           entry (bin(31), pointer);
 declare  s$free               entry (pointer);
 declare  s$int_date_time      entry (bin(31));
@@ -29,12 +47,14 @@ declare  s$seq_delete         entry (bin(15), bin(15));
 declare  s$seq_read           entry (bin(15), bin(15), bin(15), char(*), bin(15));
 declare  s$seq_rewrite        entry (bin(15), bin(15), char(*), bin(15));
 declare  s$seq_write          entry (bin(15), bin(15), char(*), bin(15));
-declare  s$set_task_wait_info entry (bin(31), bin(15), bin(15), bin(15));
 declare  s$task_setup_wait    entry (bin(31), bin(15), bin(15), bin(31),
                                      bin(31), bin(31), bin(15), bin(15));
 declare  s$task_wait_event    entry (bin(31), bin(31), bin(15), bin(31),
                                      bin(15), bin(31), bin(31), bin(15));
 
+declare  open_file            entry (char(*)var, bin(15), bin(15),
+                                     bin(15), bin(15), bin(15),
+                                     bin(15), char(*)var, bin(15));
 
 %nolist;  %include 'Messages.incl.pl1';        %list;
 %nolist;  %include 'Queues.incl.pl1';          %list;
@@ -43,8 +63,9 @@ declare  s$task_wait_event    entry (bin(31), bin(31), bin(15), bin(31),
 %nolist;  %include 'Lists.strux.incl.pl1';     %list;
 %nolist;  %include 'TimeAfterTime.incl.pl1';   %list;
 %nolist;  %include 'Stat.strux.incl.pl1';      %list;
+%nolist;  %include 'messages.strux';           %list;
 
-%nolist;  %include 'defs_class.incl.pl1';      %list;
+%nolist;  %include 'cc_class_defs.incl.pl1';   %list;
 
 declare BUGON                           bit(1) static external initial(false);
 %page ;
@@ -66,15 +87,13 @@ declare  tot_time  (no_summary_stats)   binary (31)   external; /* summ stats */
 %replace habitat_event                  by    2;
 %replace tact_event                     by    3;
 %replace obn_event                      by    4;
-%replace super_event                    by    5;
-%replace stat_event                     by    6;
-%replace max_events                     by    6;
+%replace stat_event                     by    5;
+%replace max_events                     by    5;
 
 declare  MainQID                        binary(31) external static;
 declare  MainQID_str                    character(4) defined (MainQID);
 declare  MainQ                          pointer external initial(null()) ;
 declare  HabitatQ                       pointer external initial(null()) ;
-declare  SuperQ                         pointer external initial(null()) ;
 
 declare  ec (64)                        binary (31)   static   external;
 declare  ei (64)                        binary (31)   static   external;
@@ -108,7 +127,6 @@ declare 1 custom    based,
    declare  (region_port,region_size)   external bin(15);
    declare  (avatar_port,avatar_size)   external bin(15);
    declare  (object_port,object_size)   external bin(15);
-   declare  turf_port                   external bin(15);
    declare  ap                          external pointer;
 
    declare 1 region external,
@@ -159,16 +177,7 @@ hatchery:  procedure  options (main);
 
          else if (task = server_event)   then  call handle_msg;
          else if (task = habitat_event)  then  call resend_msg (HabitatQ);
-         else if (task = super_event)    then  call resend_msg (SuperQ);
-         else
-           if (task = tact_event)      then
-               do;
-               call ProcessTact;
-               call GetTactInfo (tact_ei, tact_ec);
-               call s$task_setup_wait (Master_ei, tact_event, 1, tact_ei, tact_ec,
-                                       wait_forever, index, code);
-               if (code ^= 0)  then  call debug_msg (code, 'Tact task setup');
-               end;
+         else if (task = tact_event)     then  call ProcessTact;
          else if (task = obn_event)   then  call resend_msg (Q_ptrs (event_index));
          else if (task = stat_event)  then  call resend_msg (stat_queue_ptr);
          else call trace_msg ('Unknown event ' || ltrim(task) || ' ignored.');
@@ -186,7 +195,7 @@ initialize_process:  procedure;
    call s$parse_command ('hatchery', code,
                          'switch(-subsys_log),=1', habitat_log,
                          'end');
-   if (code ^= 0)  then  call die_msg (code, 'bad paramter');
+   if (code ^= 0)  then  stop;
 
    if (habitat_log) then call set_debug_queue ('habitat_debug');
    call initialize_queues_and_tasks ('hatchery', MainQ,
@@ -194,7 +203,6 @@ initialize_process:  procedure;
    call GetQueueInformation (MainQ,my_name,MainQID,my_type);
 
    call make_sender_queue ('habitat',       habitat_event,  HabitatQ);
-   call make_sender_queue ('SuperProcess',  super_event,    SuperQ);
 
    call open_habitat_files;
    ap = addr(avatar.profile);
@@ -252,21 +260,18 @@ end  initialize_process;
 %page;
 handle_msg:  procedure;
 
-declare event_index      binary (15);
 declare mtype            binary (31);
 declare len              binary (31);
 declare uid              binary (31);
 declare qid              binary (31);
-declare sub_addr         binary (15);
 declare code             binary (15);
 declare buffer           character(1024) ;
 declare obuf             character(1024) varying ;
-declare f_cnt            binary (15);
-declare f_list(6)        binary (15);
+
 
   do while (true);
-     call get_sub_message (MainQ, event_index, mtype, buffer, length(buffer),
-                           len, uid, qid, sub_addr, f_cnt, f_list);
+     call get_message (MainQ, (0), mtype, buffer, length(buffer),
+                       len, uid, qid);
      if (mtype = -1) then return;
 
      obuf = substr(buffer,1,len) ;
@@ -348,6 +353,7 @@ declare 1 hdr            defined(req.header),
      return;
 
 end process_input;
+
 %page;
 initiate_avatar_creation: procedure (buf);
 declare buf pointer;
@@ -361,6 +367,10 @@ declare 1 buf_olay       based (buf),
 declare sub_qptr    pointer;
 declare tp          pointer;
 
+   declare  dummy                       char    (1)   based;
+   declare  sm_ptr                      pointer static internal init (null ());
+
+
    call open_queue_from_number (buf_olay.sub_qid,sub_qptr);
    if (sub_qptr = null()) then do;
       call trace_msg ('Unable to open queue for ' || ltrim(sub_account) ||
@@ -369,7 +379,18 @@ declare tp          pointer;
       end;
 
    /* Do a switch_queues so this process will be default output for user. */
-   call send_message (sub_qptr,message$switch_queues,MainQID_str,4,0,sub_qid);
+
+  if (sm_ptr  =  null ())  then
+      do;
+      allocate  switch_queue_msg  set (sm_ptr);
+      sm_ptr -> switch_queue_msg.q_type = type$roomerQ;
+      end;
+
+   sm_ptr -> switch_queue_msg.qid = MainQID;
+
+   call send_message (sub_qptr, message$switch_queues,
+                      sm_ptr -> dummy, bytesize (switch_queue_msg),
+                      0, sub_qid);
 
    prefix = substr(login_msg,1,2) || encode_byte(0) || encode_byte(3);
    call scramble_head_styles;
@@ -394,12 +415,6 @@ scramble_head_styles: procedure;
      declare (i, j) binary(15);
      declare done bit(1);
      declare random_head_list(0:7) character(1);
-     %replace MALE_HEAD_COUNT by 14;
-     declare allowed_male_heads(MALE_HEAD_COUNT) binary(15) static init(
-          1, 3, 4, 5, 7, 9, 11, 25, 33, 41, 53, 68, 82, 83 );
-     %replace FEMALE_HEAD_COUNT by 12;
-     declare allowed_female_heads(FEMALE_HEAD_COUNT) binary(15) static init(
-          2, 21, 30, 48, 56, 64, 65, 80, 84, 87, 89, 131 );
      %replace HEAD_STYLE_OFFSET by 57;
 
      do i = 0 to 3;
@@ -435,8 +450,6 @@ end scramble_head_styles;
 process_customization: procedure (uid,qid);
 declare uid    bin(31);
 declare qid    bin(31);
-declare turf_region bin(31);
-declare turf_mailbox bin(31);
 declare tp     pointer;
 
 declare 1 buff           ,
@@ -455,22 +468,18 @@ declare buffer_info      char(14) defined (buff);
       return;
       end;
 
-   if (^valid_responses(0)) then do;
+   if (^valid_responses(uid)) then do;
       call send_error_response (tp,false);
       return;
       end;
-
-   if (^ get_next_turf (turf_region ))                 then return;
-
-   if (^ update_region_record (turf_region,tp))        then return;
 
    if (^ create_token_record (uid,tp))                 then return;
    if (^ create_paper_record (uid,tp))                 then return;
 
    if (^ create_head_record (uid,tp))                  then return;
-   if (^ create_avatar_record (uid,turf_region,tp))    then return;
+   if (^ create_avatar_record (uid,tp))                then return;
 
-   buff.region_id   = turf_region;
+   buff.region_id   = WELCOME_DESK;
    buff.login_msg   = 'U' || current_header || encode_byte(current_noid) ||
                       encode_byte(current_request);
    call send_message (HabitatQ, msg$current_region, buffer_info, 14, uid, qid);
@@ -480,78 +489,24 @@ declare buffer_info      char(14) defined (buff);
 
 end process_customization;
 %page;
-valid_responses: procedure (dmy) returns (bit(1) aligned);
-declare dmy bin(15);
+valid_responses: procedure (uid) returns (bit(1) aligned);
+declare uid bin(31);
 declare head_style bin(15);
+declare i bin(15);
 
    head_style = rank(substr(request_string,1,1));
-   return (true);
-   if (head_style ^= 1  &  head_style ^= 2  &  head_style ^= 3  &
-       head_style ^= 4  &  head_style ^= 9  &  head_style ^= 11  &
-       head_style ^= 21 &  head_style ^= 30)
-       then return (false);
 
-   return (true);
+   do i = 1 to MALE_HEAD_COUNT;
+      if (head_style = allowed_male_heads(i)) then return (true);
+      end;
+   do i = 1 to FEMALE_HEAD_COUNT;
+      if (head_style = allowed_female_heads(i)) then return (true);
+      end;
+   call trace_msg ('User ' || ltrim(uid) || ' requested reserved head #' ||
+                    ltrim(head_style));
+   return (false);
 
 end valid_responses;
-%page;
-get_next_turf: procedure ( new_region ) returns (bit(1) aligned);
-declare new_region  bin(31);
-
-declare (i,code)    bin(15);
-declare bytes       bin(15);
-declare next_set    char(80);
-declare id_number   char(15) var;
-
-   do i = 1 to 3;
-      call s$seq_read (turf_port,80,bytes,next_set,code);
-      if (code ^= 0) then do;
-         call debug_msg (code,'read turf');
-         goto try_again;
-         end;
-      call s$seq_delete (turf_port,code);
-      id_number = rtrim(ltrim(substr(next_set,1,bytes)));
-      code = verify (id_number,'0123456789');
-
-      if (code ^= 0) then do;
-         call trace_msg ('bad turf record: ' || id_number);
-         goto try_again;
-      end;
-
-      new_region  = id_number;
-      return (true);
-
-try_again:
-      end;
-
-end get_next_turf;
-%page;
-update_region_record: procedure (region_id,ptr) returns(bit(1) aligned);
-declare region_id   bin(31);
-declare ptr         pointer;
-declare bytes       bin(15);
-declare code        bin(15);
-
-   region.ident = region_id;
-   call s$keyed_read (region_port,'ident','',region_size,bytes,region_buf,code);
-   if (code ^= 0) then do;
-      call debug_msg (code,'read region ' || ltrim(region_id));
-      call send_error_response (ptr,false);
-      return(false);
-      end;
-
-   region.owner_id = ptr->custom.user;
-
-   call s$seq_rewrite (region_port,bytes,region_buf,code);
-   if (code ^= 0) then do;
-      call debug_msg (code,'update region ' || ltrim(region_id));
-      call send_error_response (ptr,false);
-      return(false);
-      end;
-
-   return(true);
-
-end update_region_record;
 %page;
 create_head_record: procedure (uid,ptr) returns(bit(1) aligned);
 declare uid    bin(31);
@@ -591,9 +546,8 @@ declare code   bin(15);
 
 end create_head_record;
 %page;
-create_avatar_record: procedure (uid,turf_region,ptr) returns(bit(1) aligned);
+create_avatar_record: procedure (uid,ptr) returns(bit(1) aligned);
 declare uid         bin(31);
-declare turf_region bin(31);
 declare ptr         pointer;
 declare i           bin(15);
 declare code        bin(15);
@@ -603,11 +557,11 @@ declare iname       char(10) var;
 declare compress_name entry (char(*) var, char(*) var);
 
    avatar.ident       = uid;
-   avatar.region      = turf_region;
+   avatar.region      = WELCOME_DESK;
    avatar.inside      = 0;
    avatar.x_pos       = 8;
    avatar.y_pos       = 128;
-   avatar.home_turf   = turf_region;
+   avatar.home_turf   = HELP_ROOM;
    avatar.graphic_st  = 0;
    avatar.graphic_wd  = 8;
    avatar.orientation = rank(substr(request_string,3,1));
@@ -630,8 +584,8 @@ declare compress_name entry (char(*) var, char(*) var);
    props.customize(1)         = rank(substr(request_string,4,1));
    props.customize(2)         = rank(substr(request_string,5,1));
    props.customize(3)         = 0;
-   props.bank_account_balance = 1900;
-   props.turf                 = turf_region;
+   props.bank_account_balance = 9;
+   props.turf                 = HELP_ROOM;
    props.stun_count           = 0;
    props.nitty_bits           = false;
    props.true_orientation     = avatar.orientation;
@@ -678,7 +632,7 @@ create_token_record:          procedure( uid,ptr ) returns(bit(1) aligned);
      object.graphic_wd  = 0;
      object.genl_flags  = copy (false,32);
      object.prop_length = 4;
-     object.properties  = byte( 0 ) || byte( 100 ) || copy (byte(0),84);
+     object.properties  = byte(0) || byte(1) || copy (byte(0),84);
 
      do i = 1 to 5;
         object.fillers(i) = 0;
@@ -876,29 +830,17 @@ declare code bin(15);
      avatar_size = bytesize(avatar);
      object_size = bytesize(object);
 
-     call c$attach_link ('MC_region', 'MC_region', region_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_region');
-     call s$open (region_port, seq_org, region_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_region');
+     call open_file ('CC_region', region_port, seq_org, bytesize(region),
+                     update_io, implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_region');
 
-     call c$attach_link ('MC_avatar', 'MC_avatar', avatar_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_avatar');
-     call s$open (avatar_port, seq_org, avatar_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_avatar');
+     call open_file ('CC_avatar', avatar_port, seq_org, bytesize(avatar),
+                     update_io, implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_avatar');
 
-     call c$attach_link ('MC_object', 'MC_object', object_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_object');
-     call s$open (object_port, seq_org, object_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_object');
-
-     call c$attach_link ('MC_turf', 'MC_turf', turf_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_turf');
-     call s$open (turf_port, seq_org, 80, update_io, 
-                  implicit_lock, sequential_access, '', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_turf');
+     call open_file ('CC_object', object_port, seq_org, bytesize(object),
+                     update_io, implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_object');
 
 end open_habitat_files;
 %page;
@@ -925,7 +867,7 @@ dcl  s$open                   entry (bin (15), bin (15), bin (15), bin (15),
 
 declare code bin(15);
 
-   call s$expand_path ('MC_object_ids', '', shared_file_path,code);
+   call s$expand_path ('CC_object_ids', '', shared_file_path,code);
    if (code ^= 0) then call die_msg (code, 'expanding VM path');
    call s$attach_port ('', shared_file_path, DONT_HOLD, shared_file_port, code);
    if (code ^= 0) then call die_msg (code, 'attaching VM port');

@@ -15,22 +15,25 @@
 
 %replace max_stratus_msg                by      1024;
 
-declare  c$attach_link        entry (char(*) var, char(*) var, bin(15), bin(15));
+declare  open_file            entry (char(*)var, bin(15), bin(15),
+                                     bin(15), bin(15), bin(15),
+                                     bin(15), char(*)var, bin(15));
 
 declare  s$attach_event       entry (char(*)var, bin(31), bin(31), bin(15));
 declare  s$detach_event       entry (bin(31), bin(15));
 declare  s$cv_to_string_date_time
                               entry (bin(31), char(32) var);
 declare  s$int_date_time      entry (bin(31));
+declare  s$keyed_delete       entry (bin(15), char(64) var, bin(15),
+                                     char(*), bin(15));
 declare  s$keyed_position     entry (bin(15), char(*)var, char(*)var, bin(15),
                                      char(*), bin(15), bin(15));
 declare  s$keyed_read         entry (bin(15), char(*)var, char(*)var, bin(15),
                                      bin(15), char(*), bin(15));
 declare  s$keyed_rewrite      entry (bin(15), char(*) var, bin(15), char(*),
                                      bin(15));
-declare  s$open               entry (bin(15), bin(15), bin(15), bin(15),
-                                     bin(15), bin(15), char(32)var, bin(15));
 declare  s$parse_command      entry (char(*) var, bin(15),
+                                     char(*) var, bit(1) aligned,
                                      char(*) var, bit(1) aligned,
                                      char(*) var, bit(1) aligned,
                                      char(*) var);
@@ -54,6 +57,7 @@ declare  s$task_wait_event    entry (bin(31), bin(31), bin(15), bin(31),
 %nolist; %include 'Debug';          %list;
 %nolist; %include 'TimeAfterTime';  %list;
 %nolist; %include 'Stat.strux';     %list;
+%nolist; %include 'Context_defs';   %list;
 
 %include 'region.defs';
 %include 'defs_class';
@@ -72,10 +76,10 @@ declare  checkpointing        bit(1) aligned external initial(false);
 %page;
 %replace pkt$length_minus_prefix        by      117;
 
-%replace server_event                   by        1;  /* my server event      */
-%replace tact_event                     by        2;  /* Tact task            */
-%replace master_event                   by        3;  /* habitat process      */
-%replace region_event                   by        4;  /* a regionproc process */
+%replace server_event                   by        1;  /* my server event     */
+%replace tact_event                     by        2;  /* Tact task           */
+%replace master_event                   by        3;  /* habitat process     */
+%replace region_event                   by        4;  /*  regionproc process */
 %replace stat_event                     by        5;
 %replace obn_event                      by        6;
 
@@ -84,6 +88,15 @@ declare  checkpointing        bit(1) aligned external initial(false);
 %replace wait_forever                   by       -1;
 
 %include 'descriptor.structs.incl.pl1';
+
+declare 1 cache_stat     external,
+          2 reads        bin(15),
+          2 hits         bin(15);
+
+declare 1 cache (0:31) external,
+          2 last_ref     bin(31),
+          2 pac_cnt      bin(15),
+          2 r_info       like region_desc;
 
 %page;
 habitat_db:  procedure   options (main);
@@ -102,6 +115,7 @@ habitat_db:  procedure   options (main);
    declare  event_num                   binary (15);
    declare  event_status                binary (31);
    declare  habitat_log                 bit(1) aligned;
+   declare  region_cache                bit(1) aligned;
 
    declare  (region_port,region_size)   bin(15);
    declare  (avatar_port,avatar_size)   bin(15);
@@ -110,13 +124,11 @@ habitat_db:  procedure   options (main);
    declare  (mail_port,mail_size)       bin(15);
    declare  (tele_port,tport_size)      bin(15);
    declare  (clue_port,clue_size)       bin(15);
-   declare  oracle_port                 bin(15);
-   declare  beta_port                   bin(15);       /* BTest */
+   declare  packed_port                 bin(15);
 
 %page;
-   declare 1 region,
+   declare 1 region based,
    %include 'region';;
-   declare region_buf char(1) defined(region);
 
    declare 1 avatar,
    %include 'avatar';;
@@ -151,6 +163,7 @@ habitat_db:  procedure   options (main);
    call s$parse_command ('habitat_db',                 code,
                          'switch(-checkpoint),=1',     checkpointing,
                          'switch(-subsys_log),=1',     habitat_log,
+                         'switch(-region_cache),=1',   region_cache,
                          'end');
    if (code ^=0) then stop;
 
@@ -161,6 +174,7 @@ habitat_db:  procedure   options (main);
    call make_sender_queue ('habitat', master_event, master_queue);
 
    call open_habitat_files;
+   call initialize_cache;
    call init_stats (stat_event);
 
    do  while (true);
@@ -228,17 +242,32 @@ do while (true);
        if (msg_type = msg$ckpoint_my_region)  then
            call checkpoint_region_value (addr(msg_buff));
      else
-       if (msg_type = msg$oracle)  then
-           call oracle_message (addr(msg_buff));
-     else
        if (msg_type = message$statflush)  then
            call send_stats;
+     else
+       if (msg_type = message$internal)  then
+           call handle_internal_msg (msg_buff, msg_len);
      else
        if (msg_type = message$debug_msg)  then
            call debug_on (msg_buff, msg_len);
    end;
 
 end  handle_msg;
+
+%page;
+handle_internal_msg:     procedure (buf, len);
+     dcl  buf                 char(*);
+     dcl  len                 bin(31);
+
+     if (len = 7 & substr (buf, 1, len) = 'cacheon') then
+          region_cache = true;
+     else if (len = 8 & substr (buf, 1, len) = 'cacheoff') then
+          region_cache = false;
+     else
+          call trace_msg ('Unknown internal msg: ' || substr (buf, 1, len));
+
+end handle_internal_msg;
+
 
 %page;
 handle_lookup_msg:  procedure (buf,uid,qid);
@@ -270,7 +299,8 @@ declare containers       bin(15);
 declare containIDs(255)  bin(31);
 
 declare 1 summary_info,
-          2 region_num                  bin(31);
+          2 region_num                  bin(31),
+          2 code                        bin(15);
 declare   summ_info  char(1) defined (summary_info);
 
 declare (i,bytes) bin(15);
@@ -330,7 +360,7 @@ lookup(MC$dbf_init_welcome):                        /*  11  */
      return;
 
 lookup(MC$dbf_name_region):                         /*  12  */
-     call return_region_name (buf,queue,uid);
+     call trace_msg ('request for obsolete dbf_name_region');
      return;
 
 lookup(MC$dbf_locate_player):                       /*  13  */
@@ -344,28 +374,67 @@ lookup(MC$dbf_check_mail):                          /*  14  */
 /* end of code for handle_lookup_msg */
 %page;
 return_region_contents: procedure;
+declare slot bin(15);
 
      if (BUGON_high) then call trace_msg ('Request for contents of region ' ||
                                           ltrim(buf_olay.object));
 
-     containers     = 0;
+     containers = 0;
 
      call init_result_list;
+     if (^read_region_info (buf_olay.object, slot)) then do;
+        call reply_with_error (buf_olay.object);
+        return;
+        end;
+
+     if (cache(slot).pac_cnt > 0)
+        then call process_packed_objects (buf_olay.object,cache(slot).pac_cnt);
+
      if (position_by_host (buf_olay.object,0))
         then call process_objects (buf_olay.object,0);
 
      if (containers ^= 0) then call process_containers;
 
-     call process_region (buf_olay.object);
+     call process_region (buf_olay.object, addr(cache(slot).id));
      call s$int_date_time (obj.transaction);
-     call send_message (queue, msg$lookup_results, obj_list, base+11, 0, 0);
-
-     summary_info.region_num  = buf_olay.object;
-     call send_message (master_queue,msg$lookup_results,summ_info,8,0,0);
+     call send_message (queue, msg$lookup_results, obj_list, base+11, 0,0);
 
      return;
 
 end return_region_contents;
+%page;
+process_packed_objects: procedure (key, cnt);
+declare key       bin(31);
+declare cnt       bin(15);
+declare i         bin(15);
+
+     obj.container = key;
+     call s$keyed_position (packed_port,'ident','',1024,obj_list,
+                            key_equal,code);
+     if (code ^= 0) then do;
+        call debug_msg (code, 'position packed objs: ' || ltrim(key));
+        return;
+        end;
+
+     do i = 1 to cnt;
+        call s$seq_read (packed_port,1024,bytes,obj_list,code);
+        if (code ^= 0  |  obj.container ^= key) then do;
+             call debug_msg (code, 'read packed objs: ' || ltrim(key));
+             return;
+             end;
+        base = obj.transaction;
+        obj.function    = buf_olay.db_function;
+        obj.container   = buf_olay.object;
+        obj.transaction = buf_olay.transaction;
+        if (i ^= cnt) then
+            call send_message (queue, msg$lookup_results, obj_list,
+                               (base),0,0);
+        end;
+
+        base = base - 11;                    /* Set up so that we can piggy- */
+        op = addr (obj.list_data(base));     /* back non-packed objects.     */
+
+end process_packed_objects;
 %page;
 read_avatar: procedure (avatar_id) returns(bit(1) aligned);
 declare avatar_id  bin(31);
@@ -520,21 +589,11 @@ more:
 
 end process_containers;
 %page;
-process_region: procedure (host_id);
+process_region: procedure (host_id, rptr);
 declare host_id  bin(31);
-
-declare 1 region_props,
-          2 links(4)     bin(31),
-          2 exits(4)     bin(15);
-declare link_string char(24) defined (region_props);
-
-     region.ident = host_id;
-     call s$keyed_read (region_port,'ident','',region_size,bytes,
-                        region_buf,code);
-     if (code ^= 0) then do;
-        call debug_msg (code,' (Rr) for region ' || ltrim(string(host_id)));
-        return;
-        end;
+declare rptr     pointer;
+declare best_slot bin(15);
+declare region_buffer char(72) based;
 
      if ((base + 57 + obj_fixed) > max_stratus_msg) then do;
         call send_message (queue, msg$lookup_results, obj_list,
@@ -542,37 +601,134 @@ declare link_string char(24) defined (region_props);
         call init_result_list;
         end;
 
-     op->obj_desc.id          = host_id;
-     op->obj_desc.class       = byte(CLASS_REGION);
-     op->obj_desc.container   = region.owner_id;
-     op->obj_desc.position    = region.terrain;
-     op->obj_desc.x_pos       = region.bounds(1);
-     op->obj_desc.y_pos       = byte(region.bounds(2));
-     op->obj_desc.style       = byte(region.class_group);
-     op->obj_desc.orientation = byte(region.orientation);
-     op->obj_desc.graph_state = byte(0);                    /* for now... */
-     op->obj_desc.graph_width = byte(0);                    /* for now... */
-     op->obj_desc.contype     = byte(0);
-     op->obj_desc.gen_flags   = region.flags;
-     op->obj_desc.prop_len    = 44;
-
-     region_props.links(1) = region.neighbor(1);
-     region_props.links(2) = region.neighbor(2);
-     region_props.links(3) = region.neighbor(3);
-     region_props.links(4) = region.neighbor(4);
-     region_props.exits(1) = region.exit_type(1);
-     region_props.exits(2) = region.exit_type(2);
-     region_props.exits(3) = region.exit_type(3);
-     region_props.exits(4) = region.exit_type(4);
-     substr(op->obj_desc.props,1,46) = link_string    || region.name ||
-                                       region.to_town || region.to_port;
+     op->region_buffer = rptr->region_buffer;
      base = base + obj_fixed + 46;
      obj.count = obj.count + 1;
 
      return;
 
 end process_region;
+%page;
+read_region_info: procedure (host_id, best_slot)  returns (bit(1) aligned);
+declare host_id  bin(31);
+declare rptr     pointer;
+declare best_slot bin(15);
+declare reference bin(31) based;
+declare region_buffer char(72) based;
 
+     if (locate_in_cache (host_id, best_slot)) then return (true);
+
+     return (put_into_cache (host_id, best_slot));
+
+end read_region_info;
+
+reply_with_error: procedure (region_num);
+declare region_num bin(31);
+
+     obj.count = 1;
+     op = addr(obj.list_data(1));
+
+     op->obj_desc.id          = region_num;
+     op->obj_desc.class       = byte(CLASS_REGION);
+     op->obj_desc.x_pos       = 0;
+     op->obj_desc.container   = -2;
+
+     call send_message (queue, msg$lookup_results, obj_list, 11+11, 0, 0);
+
+end reply_with_error;
+%page;
+locate_in_cache: procedure (region_id, best_slot)  returns (bit(1)aligned);
+declare region_id   bin(31);
+declare best_slot   bin(15);
+declare slot        bin(15);
+declare ii          bin(15);
+declare ref_ts      bin(31);
+
+     slot = mod (region_id, 8)  *  4;
+
+     if (^region_cache) then do;                  /* cache is turned off. */
+          best_slot = slot;
+          return (false);
+          end;
+
+     cache_stat.reads = cache_stat.reads + 1;
+
+     ref_ts = '7fffffff'b4;
+     do ii = slot to (slot + 3);
+          if (cache(ii).id = region_id) then do;
+               call s$int_date_time (cache(ii).last_ref);
+               cache_stat.hits = cache_stat.hits + 1;
+               best_slot = ii;
+               return (true);
+               end;
+          if (cache(ii).last_ref < ref_ts) then do;
+               best_slot = ii;
+               ref_ts = cache(ii).last_ref;
+               end;
+          end;
+
+     call s$int_date_time (cache(best_slot).last_ref);
+     return (false);
+          
+end locate_in_cache;
+%page;
+put_into_cache: procedure (region_id, slot)  returns (bit(1) aligned);
+
+declare region_id bin(31);
+declare slot bin(15);
+declare ptr pointer;
+
+declare 1 reg,
+%include 'region';;
+declare reg_buf char(1) defined(reg);
+
+declare 1 region_props,
+          2 links(4)     bin(31),
+          2 exits(4)     bin(15);
+declare link_string char(24) defined (region_props);
+
+     reg.ident = region_id;
+     call s$keyed_read (region_port,'ident','',region_size,bytes,
+                        reg_buf,code);
+     if (code ^= 0) then do;
+        call debug_msg (code,' (Rr) for region ' || ltrim(region_id));
+        return (false);
+        end;
+
+     cache(slot).pac_cnt = rank(reg.to_town);
+
+     ptr = addr (cache(slot).id);
+
+     ptr->obj_desc.id          = region_id;
+     ptr->obj_desc.class       = byte(CLASS_REGION);
+     ptr->obj_desc.container   = reg.owner_id;
+     ptr->obj_desc.position    = reg.terrain;
+     ptr->obj_desc.x_pos       = reg.bounds(1);
+     ptr->obj_desc.y_pos       = byte(reg.bounds(2));
+     ptr->obj_desc.style       = byte(reg.class_group);
+     ptr->obj_desc.orientation = byte(reg.orientation);
+     ptr->obj_desc.graph_state = byte(reg.entry_proc);
+     ptr->obj_desc.graph_width = byte(reg.exit_proc);
+     ptr->obj_desc.contype     = byte(0);
+     ptr->obj_desc.gen_flags   = reg.flags;
+     ptr->obj_desc.prop_len    = 44;
+
+     region_props.links(1) = reg.neighbor(1);
+     region_props.links(2) = reg.neighbor(2);
+     region_props.links(3) = reg.neighbor(3);
+     region_props.links(4) = reg.neighbor(4);
+     region_props.exits(1) = reg.exit_type(1);
+     region_props.exits(2) = reg.exit_type(2);
+     region_props.exits(2) = reg.exit_type(2);
+     region_props.exits(3) = reg.exit_type(3);
+     region_props.exits(4) = reg.exit_type(4);
+     substr(ptr->obj_desc.props,1,46) = link_string  || reg.name ||
+                                        reg.to_town  || reg.to_port;
+
+     return (true);
+
+end put_into_cache;
+%page;
 init_result_list: procedure;
 
      obj.function    = buf_olay.db_function;
@@ -805,36 +961,6 @@ declare 1 buff based(buf),
 
 end cast_text_in_stone;
 %page;
-return_region_name: procedure(buf,queue,uid);
-declare buf    pointer;
-declare queue  pointer;
-declare uid    bin(31);
-declare 1 buff based(buf),
-          2 db_function  bin(15),
-          2 key          bin(31);
-
-declare 1 result,
-          2 function     bin(15),
-          2 region_id    bin(31),
-          2 region_name  char(20);
-declare result_buf char(1) defined(result);
-declare bytes  bin(15);
-
-   result.function  = buff.db_function;
-   result.region_id = buff.key;
-
-   region.ident = buff.key;
-   call s$keyed_read (region_port,'ident','',region_size,bytes,region_buf,code);
-   if (code ^= 0) then do;
-      call debug_msg (code,' (Rr) for region ' || ltrim(region.ident));
-      result.region_name = '';
-      end;
-   else result.region_name = region.name;
-   call send_message (queue, msg$lookup_results,substr(result_buf,1,26),26,
-                                                                   uid,0);
-
-end return_region_name;
-%page;
 return_current_region: procedure(buf,queue,uid);
 declare buf    pointer;
 declare queue  pointer;
@@ -951,10 +1077,6 @@ declare bytes       bin(15);
       end;
 
    avatar.name = substr(address,4);
-   if (avatar.name = 'theoracle') then do;
-      call make_dead_letter;
-      return (false);
-      end;
    call s$keyed_read (avatar_port,'compname','',avatar_size,bytes,
                         avatar_buf,code);
    if (code ^= 0) then do;
@@ -1088,7 +1210,7 @@ declare when   char(32) var;
      call s$keyed_read (avatar_port,'ident','',avatar_size,abytes,avatar_buf,code);
      if (code ^= 0) then do;
         if (code = e$record_not_found)
-           then obuff.region_id = beta_tester (sub_account);
+           then obuff.region_id = 0;
            else do;
                call debug_msg (code,' (Ra) for avatar ' || ltrim(sub_account));
                obuff.region_id   = -1;
@@ -1100,10 +1222,8 @@ declare when   char(32) var;
 
      if (avatar.region ^= Null_Region)
         then obuff.region_id = avatar.region;
-        else do;
-            p = addr(avatar.profile);
-            obuff.region_id = avatar_property.turf;
-            end;
+        else obuff.region_id = 5002;              /* HELP room */
+
      call send_message (master_queue,msg$current_region,obuff_info,4,
                         sub_account,sub_qid);
 
@@ -1113,23 +1233,6 @@ declare when   char(32) var;
         then call debug_msg (code,' (Ua) for avatar ' || ltrim(avatar.ident));
 */
 end get_current_location;
-%page;
-beta_tester: procedure (acct_num) returns (bin(15));
-declare acct_num  bin(31);
-declare acct_str  char(10);
-declare bytes     bin(15);
-
-  acct_str = substr(string(acct_num),5,10);
-  acct_str = translate(acct_str,'0',' ');
-
-  call s$keyed_read (beta_port,'acct','',10,bytes,acct_str,code);
-  if (code = 0)
-      then return (0);
-  if (code = e$record_not_found)
-      then return (-2);
-  return (-1);
-
-end beta_tester;
 %page;
 return_oracle_wisdom: procedure(buf,queue);
 declare buf    pointer;
@@ -1169,7 +1272,7 @@ declare 1 request        based (buf),
           2 list_data    char(250);
 declare op pointer;
 declare (i,bytes)  bin(15);
-declare record_exists bit(1);
+declare record_exists bit(1) aligned;
 
    if (^checkpointing) then return;
 
@@ -1184,17 +1287,24 @@ declare record_exists bit(1);
          call s$keyed_read (object_port,'ident','',object_size,bytes,object_buf,code);
          end;
       if (code = 0) then record_exists = true;
-      else if (code = e$record_not_found) then record_exists = false;
-         else do;
-            call debug_msg (code,' (CKPT) reading ' || ltrim(op->obj_desc.id) || ' in '
-                            || ltrim(region_id) || ' region');
-            goto next_description;
+         else if (code = e$record_not_found) then do;
+            record_exists = false;
+            code = 0;
             end;
-      if (record_exists)
-         then call update_info;
-         else call init_new_record;
-      call flush_to_disk (record_exists,rank(op->obj_desc.class));
-      next_description:
+         else call debug_msg (code,' CKPT reading ' || ltrim(op->obj_desc.id)
+                                        || ' in region ' || ltrim(region_id));
+
+      if (code = 0) then do;
+         if (request.region_id = Dead_Region)
+            then call delete_discarded_object (record_exists);
+         else do;
+            if (record_exists)
+               then call update_info;
+               else call init_new_record;
+            call flush_to_disk (record_exists,rank(op->obj_desc.class));
+            end;
+         end;
+
       op = addrel(op, obj_fixed + op->obj_desc.prop_len);
       end;
 
@@ -1270,7 +1380,7 @@ declare i bin(15);
 end init_new_record;
 %page;
 flush_to_disk: procedure (exists,class);
-declare exists bit(1);
+declare exists bit(1) aligned;
 declare class  bin(15);
 
    if (class = CLASS_AVATAR)
@@ -1286,6 +1396,72 @@ declare class  bin(15);
                               ', disk write');
 
 end flush_to_disk;
+%page;
+delete_discarded_object: procedure (exists);
+declare exists bit(1) aligned;
+declare text_ptr pointer;
+declare text_id  bin(31) based(text_ptr);
+
+  if (object.class <= CLASS_AVATAR) then do;
+     call trace_msg ('Attempt to delete ' || ltrim(op->obj_desc.id) ||
+                     '/' || ltrim(object.class));
+     return;
+     end;
+
+  if (object.location.type = 0  &  object.location.host < 0) then do;
+     call trace_msg ('Attempt to delete packed ' || ltrim(op->obj_desc.id) ||
+                     '/' || ltrim(object.class));
+     return;
+     end;
+
+  if (exists) then do;
+     call s$seq_delete (object_port, code);
+     if (code ^= 0) 
+        then call debug_msg (code, 'delete object ' || ltrim(op->obj_desc.id));
+     end;
+
+  if (object.class = CLASS_PAPER |
+      object.class = CLASS_BOOK  |
+      object.class = CLASS_PLAQUE) then do;
+     substr(object.properties,1,object.prop_length) = 
+                       substr(op->obj_desc.props,1,object.prop_length);
+     if (object.class = CLASS_PAPER)
+        then text_ptr = addr (object.properties);
+        else text_ptr = addrel (addr(object.properties),2);
+     if (text_id ^= 0) then
+        call delete_text_record (text_id);
+     end;
+
+end delete_discarded_object;
+%page;
+delete_text_record: procedure (text_id);
+declare text_id bin(31);
+
+  text.key = abs(text_id);
+  text.page = 1;
+  call s$keyed_position (text_port, 'ident', '', text_size, text_buf,
+                                                     key_equal, code);
+  if (code ^= 0) then do;
+     call debug_msg (code, 'deleting text ' || ltrim(text_id));
+     return;
+     end;
+
+  do while (code = 0);
+     call s$seq_read (text_port,text_size,bytes,text_buf,code);
+     if (code ^= 0  &  code ^= e$end_of_file)
+        then call debug_msg (code, ' reading text ' || ltrim(text_id));
+     if (code = 0) then 
+        if (text.key = abs(text_id)) then
+           if (^text.permanent) then do;
+              call s$seq_delete (text_port,code);
+              if (code ^= 0) then call debug_msg (code,'deleting text ' ||
+                                                    ltrim(text_id));
+              end;
+           else code = e$end_of_file;   /* Do not read remaining pages. */
+        else code = e$end_of_file;
+     end;
+
+end delete_text_record;
 end checkpoint;
 %page;
 checkpoint_region_value: procedure (buf);
@@ -1298,7 +1474,7 @@ declare (i,bytes)  bin(15);
 declare ghost_em   bit(1) aligned;
 
    if (^checkpointing) then return;
-   if (substr(q_context.holding_area,2,1) = 'G')
+   if (get_context_holding_area (CH$club_caribe) = 'G')
       then ghost_em = true;
       else ghost_em = false;
 
@@ -1325,29 +1501,18 @@ declare ghost_em   bit(1) aligned;
 
 end checkpoint_region_value;
 %page;
-oracle_message: procedure (argptr);
-declare argptr  pointer;
-declare 1 arg            based(argptr),
-          2 asker        bin(31),
-          2 askee        bin(31),
-          2 text         char(113) var;
-declare 1 buff           ,
-          %include       'question';
-declare buff_string      char(128) defined(buff);
+initialize_cache: procedure;
+dcl i bin(15);
 
-   buff.originator = arg.asker;
-   buff.oracle_id  = arg.askee;
-   buff.answered   = false;            /* Will be set when actually answered. */
-   buff.unused     = false;
-   buff.text       = arg.text;
+     cache_stat.reads = 0;
+     cache_stat.hits  = 0;
 
-   call s$int_date_time (buff.time_asked);
+     do i = 0 to 31;
+          cache(i).last_ref = 0;
+          cache(i).id = 0;
+          end;
 
-   call s$seq_write (oracle_port,(length(buff.text)+16),buff_string,code);
-   if (code ^= 0) then
-      call debug_msg (code,'writing oracle log, user ' || ltrim(arg.askee));
-
-end oracle_message;
+end initialize_cache;
 %page;
 open_habitat_files: procedure;
 
@@ -1366,61 +1531,40 @@ open_habitat_files: procedure;
      tport_size  = bytesize(tport);
      clue_size   = bytesize(clue);
 
-     call c$attach_link ('MC_region', 'MC_region', region_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_region');
-     call s$open (region_port, seq_org, region_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_region');
 
-     call c$attach_link ('MC_avatar', 'MC_avatar', avatar_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_avatar');
-     call s$open (avatar_port, seq_org, avatar_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_avatar');
+     call open_file ('CC_region',region_port, seq_org, region_size, update_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_region');
 
-     call c$attach_link ('MC_object', 'MC_object', object_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_object');
-     call s$open (object_port, seq_org, object_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_object');
+     call open_file ('CC_avatar',avatar_port, seq_org, avatar_size, update_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_avatar');
 
-     call c$attach_link ('MC_text', 'MC_text', text_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_text');
-     call s$open (text_port, seq_org, text_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_text');
+     call open_file ('CC_object',object_port, seq_org, object_size, update_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_object');
 
-     call c$attach_link ('MC_mail', 'MC_mail', mail_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_mail');
-     call s$open (mail_port, seq_org, mail_size, update_io, 
-                  implicit_lock, indexed_access, 'account', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_mail');
+     call open_file ('CC_background',packed_port, seq_org, 1024, input_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_background');
 
-     call c$attach_link ('MC_teleport', 'MC_teleport', tele_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_teleport');
-     call s$open (tele_port, seq_org, tport_size, input_io, 
-                  implicit_lock, indexed_access, 'dial_code', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_teleport');
+     call open_file ('CC_text', text_port, seq_org, text_size, update_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_text');
 
-     call c$attach_link ('MC_oracle', 'MC_oracle', oracle_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_oracle');
-     call s$open (oracle_port, seq_org, 128, update_io, implicit_lock,
-                  seq_access, '', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_oracle');
+     call open_file ('CC_mail', mail_port, seq_org, mail_size, update_io, 
+                     implicit_lock, indexed_access, 'account', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_mail');
 
-     call c$attach_link ('MC_clues', 'MC_clues', clue_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_clues');
-     call s$open (clue_port, seq_org, clue_size, update_io, 
-                  implicit_lock, indexed_access, 'ident', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_clue');
+     call open_file ('CC_teleport', tele_port, seq_org, tport_size, input_io, 
+                     implicit_lock, indexed_access, 'dial_code', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_teleport');
 
-     /* BTest */
-     call c$attach_link ('MC_betalist', 'MC_betalist', beta_port, code);
-     if (code ^= 0) then call die_msg (code, 'attach to MC_betalist');
-     call s$open (beta_port, seq_org, 10, input_io, 
-                  implicit_lock, indexed_access, 'acct', code);
-     if (code ^= 0) then call die_msg (code, 'open of MC_betalist');
+     call open_file ('CC_clues', clue_port, seq_org, clue_size, update_io, 
+                     implicit_lock, indexed_access, 'ident', code);
+     if (code ^= 0) then call die_msg (code, 'open of CC_clue');
 
 end  open_habitat_files;
-
 end  habitat_db;
+
+

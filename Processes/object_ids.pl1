@@ -1,4 +1,4 @@
-object_ids: procedure options(main);
+/*   object_ids - process to keep id updated in shared memory */
 
 %replace true                      by '1'b;
 %replace false                     by '0'b;
@@ -12,96 +12,211 @@ object_ids: procedure options(main);
 %replace MAX_PROCESSES             by 32;
 %replace WAIT_FOREVER              by -1;
 
-%include 'system_io_constants';
 
-declare  object_id_array      fixed bin(15) external static;
-declare  1 next(-1:MAX_PROCESSES-1) based(addr (object_id_array)),
-           2 object_id             bin(31),
-           2 text_id               bin(31);
+%replace SERVER_EVENT                   by        1;  /* my server event     */
+%replace OBJECT_EVENT                   by        2;
+%replace OBN_EVENT                      by        3;
+%replace TACT_EVENT                     by        4;   /* Tact task          */
 
-declare (code,i)              bin(15);
-declare shared_file_path      char (256) var;
-declare shared_file_port      bin(15);
+%replace MAX_EVENTS                     by        4;
 
-declare 1 control,
-          2 object            bin(31),
-          2 text              bin(31);
 
-declare event_id(1)           bin(31);
-declare event_cnt(1)          bin(31);
-declare event_status          bin(31);
-declare event_number          bin(15);
+%nolist;  %include 'Messages';               %list;
+%nolist;  %include 'Queues';                 %list;
+%nolist;  %include 'Debug';                  %list;
+%nolist;  %include 'TimeAfterTime';          %list;
+%nolist;  %include 'system_io_constants';    %list;
 
-dcl  s$attach_event           entry (char(256) var, bin(31), bin(31), bin(15));
-dcl  s$attach_port            entry (char(32) var, char(256) var, bin (15),
-                                     bin (15), bin (15));
-dcl  s$connect_vm_region      entry (bin (15), bin (15), bin (15), bin (31),
-                                     bin (15), bin (15), bin (15));
-dcl  s$expand_path            entry (char(256) var, char(32) var, char(256) var,
-                                     bin (15));
-dcl  s$open                   entry (bin (15), bin (15), bin (15), bin (15),
-                                     bin (15), bin (15), char(32) var, bin (15));
-dcl  s$read_event             entry (bin(31), bin(31), bin(31), bin(15));
-dcl  s$wait_event             entry (bin(15), (*) bin(31), (*) bin(31), bin(31),
-                                     bin(15), bin(15));
+
+declare  s$attach_event       entry (char(256)var, bin(31), bin(31), bin(15));
+declare  s$connect_vm_region  entry (bin(15), bin(15), bin(15), bin(31),
+                                     bin(15), bin(15), bin(15));
+declare  s$parse_command      entry (char(*)var, bin(15),
+                                     char(*)var, char(*)var,
+                                     char(*)var);
+declare  s$task_setup_wait    entry (bin(31),bin(15),bin(15),bin(31),
+                                     bin(31),bin(31),bin(15),bin(15));
+declare  s$task_wait_event    entry (bin(31), bin(31), bin(15), bin(31),
+                                     bin(15), bin(31), bin(31), bin(15));
+
+declare  open_file            entry (char(*)var, bin(15), bin(15),
+                                     bin(15), bin(15), bin(15),
+                                     bin(15), char(*)var, bin(15));
+
+declare  shared_file_path               char  (256)   varying         external;
+declare  shared_file_port               binary (15)                   external;
+
+declare  event_id  (1)                  binary (31)                   external;
+declare  event_cnt (1)                  binary (31)                   external;
+
+declare  object_id_array                binary (15)                   external;
+declare  1  next (-1 : MAX_PROCESSES-1) based  (addr (object_id_array)),
+            2  object_id                binary (31),
+            2  text_id                  binary (31);
+
+declare  1  control                                                   external,
+            2  object                   binary (31),
+            2  text                     binary (31);
+
+declare  object_ids_queue               pointer       init (null ())  external;
+
 
 %page;
+object_ids:  procedure  options (main);
+   declare  task                        binary (15);
+   declare  event                       binary (31);   
+   declare  event_ndx                   binary (15);
+   declare  count                       binary (31);
+   declare  status                      binary (31);
+   declare  code                        binary (15);
 
-   call s$expand_path ('MC_object_ids', '', shared_file_path,code);
-   if (code ^= 0) then call die_msg (code, 'expanding path');
-   call s$attach_port ('', shared_file_path, DONT_HOLD, shared_file_port, code);
-   if (code ^= 0) then call die_msg (code, 'attaching port');
 
-   call s$open (shared_file_port, FIXED_FILE, 4096, UPDATE_TYPE,
-               IMPLICIT_LOCKING, VM_ACCESS_MODE, '', code);
-   if (code ^= 0) then call die_msg (code, 'open file');
+   call s$parse_command ('object_ids',                      code,
+               'object_ids: pathname, =CC_object_ids',      shared_file_path,
+               'end');
+   if (code ^= 0)  then  stop;
+
+
+   call initialize_queues_and_tasks ('object_ids', object_ids_queue,
+                                     MAX_EVENTS, OBN_EVENT, TACT_EVENT);
+
+   call open_shared_file;
+
+   call initialize_control_struct;
+
+
+   do  while (true);
+       call s$task_wait_event (Master_ei, -1, task, event, event_ndx,
+                               count, status, code);
+       if (code ^= 0)  then
+           call debug_msg (code, ' on task_wait_event');
+
+         else
+           if (task = SERVER_EVENT)  then  call handle_msg;
+
+         else
+           if (task = OBJECT_EVENT)  then  call handle_object_event;
+
+         else
+           if (task = TACT_EVENT)    then  call ProcessTact;
+
+         else
+           if (task = OBN_EVENT)     then  call resend_msg(Q_ptrs (event_ndx));
+       end;
+
+%page;
+handle_object_event:  procedure;
+   declare  ndx                         binary (15);
+
+
+   do  ndx = -1 to MAX_PROCESSES-1;
+       if (next.object_id (ndx)  =  0)  then
+           do;
+           next.object_id (ndx) = control.object;
+           control.object       = control.object + 1;
+           end;
+       if (next.text_id (ndx)  =  0)  then
+           do;
+           next.text_id (ndx) = control.text;
+           control.text       = control.text + 1;
+           end;
+       end;
+
+end  handle_object_event;
+
+%page;
+handle_msg:  procedure;
+   declare  type                        binary (31);
+   declare  buf                         char  (256);
+   declare  len                         binary (31);
+   declare  uid                         binary (31);
+   declare  qid                         binary (31);
+
+
+
+   do  while (true);
+       call get_message (object_ids_queue, (0), type,
+                         buf, length (buf), len, uid, qid);
+       if (type = -1)  then  return;
+
+
+       if (type = message$internal)  then
+           call process_internal (buf, len);
+
+         else
+           if (type = message$statflush)  then 
+               call send_stats;
+
+         else
+           if (type = message$debug_msg)  then
+               call debug_on (buf, len);
+
+         else
+           call info_trace_msg ('Unknown msg rcvd '            ||
+                                ' type='  ||  ltrim (type)     ||
+                                ' msg='   ||  substr (buf, 1, len));
+       end;  /* while true */
+
+%page;
+process_internal:  procedure (buf, len);
+   declare  buf                         char    (*);
+   declare  len                         binary (31);
+
+   declare  code                        binary (15);
+
+
+   call info_trace_msg ('Unknown internal command: '  || substr (buf, 1, len));
+
+end  process_internal;
+
+end  handle_msg;
+
+end  object_ids;
+
+%page;
+open_shared_file:  procedure;
+   declare  index                       binary (15);
+   declare  code                        binary (15);
+
+
+   call open_file (shared_file_path, shared_file_port, FIXED_FILE, 4096,
+                   UPDATE_TYPE, IMPLICIT_LOCKING, VM_ACCESS_MODE, '', code);
+   if (code ^= 0)  then  call die_msg (code, 'OPEN '  ||  shared_file_path);
+
+
    call s$connect_vm_region (shared_file_port, object_id_array,
-               ONE_PAGE, STARTING_WITH_1ST,
-               VM_READ_AND_WRITE_ACCESS, NO_COPY_ON_REF, code);
-   if (code ^= 0) then call die_msg (code, 'connecting to vm region');
+                             ONE_PAGE, STARTING_WITH_1ST,
+                             VM_READ_AND_WRITE_ACCESS, NO_COPY_ON_REF, code);
+   if (code ^= 0)  then  call die_msg (code, 'connecting to vm region');
 
-   call s$attach_event (shared_file_path,event_id(1),event_cnt(1),code);
-   if (code ^= 0) then call die_msg (code, 'attach event');
+   call s$attach_event (shared_file_path, event_id (1), event_cnt (1), code);
+   if (code ^= 0)  then  call die_msg (code, 'attach event');
+
+   event_cnt (1) = -1;
+
+   call s$task_setup_wait (Master_ei, OBJECT_EVENT, 1,
+                           event_id (1), event_cnt (1),
+                           WAIT_FOREVER, index, code);
+   if (code ^= 0)  then
+       call debug_msg (code, 'SETUP_WAIT '  ||  shared_file_path);
+
+end  open_shared_file;
+
+initialize_control_struct:  procedure;
+   declare  ndx                         binary (15);
+
 
    control.object = 0;
    control.text   = 0;
 
-   do i = -1 to MAX_PROCESSES-1;
-      if (next.object_id(i) > control.object) 
-         then control.object = next.object_id(i);
-      if (next.text_id(i) > control.text) 
-         then control.text = next.text_id(i);
-      end;
+   do  ndx = -1 to MAX_PROCESSES-1;
+       if (next.object_id (ndx)  >  control.object)  then
+           control.object = next.object_id (ndx);
+       if (next.text_id   (ndx)  >  control.text)    then
+           control.text = next.text_id (ndx);
+       end;
+
    control.object = control.object + 1;
    control.text   = control.text   + 1;
 
-   do while (true);
-      do i = -1 to MAX_PROCESSES-1;
-         if (next.object_id(i) = 0) then do;
-            next.object_id(i) = control.object;
-            control.object    = control.object + 1;
-            end;
-         if (next.text_id(i) = 0) then do;
-            next.text_id(i) = control.text;
-            control.text    = control.text + 1;
-            end;
-         end;
-      call s$read_event (event_id(1),event_cnt(1),event_status,code);
-      if (code ^= 0) then call die_msg (code, 'read event');
-      event_number = 1;
-      call s$wait_event (1,event_id,event_cnt,WAIT_FOREVER,event_number,code);
-      if (code ^= 0) then call die_msg (code, 'wait event');
-      end;
-
-end object_ids;
-die_msg: procedure (code, msg);
-
-dcl  code      bin (15);
-dcl  msg       char (*) var;
-
-dcl  s$error   entry (fixed bin (15), char (*) var, char (*) var);
-
-   call s$error (code, '', msg);
-   signal error;
-
-end die_msg;
+end  initialize_control_struct;
