@@ -1,0 +1,89 @@
+****************************************************************************
+*                         NEW CARIBE FUNCTIONALITY                         *
+****************************************************************************
+
+The "CC_config" file has been altered so that it is textually updatable,
+eliminating the need for Janet, Annette, or Eric to patch the file.
+Each entry in the file consists of a KEYWORD and ARGUMENT(S). Below is the
+current list of keywords and valid arguments:
+
+message:       <string>
+
+     Sets the daily welcome message to <string>.
+
+holes:         <date/time>
+
+     Sets the holes to open at <date/time>. If <date/time> is in the past,
+     the holes will default to open. Example is "90-11-12_21:00:00"
+
+password:      <string>
+
+     Sets the current door password to <string>. There may be 10 passwords.
+     The first password encountered in the Config file is set to password 1.
+     Subsequent passwords are set to 2 through 10. The magic_data field of
+     the switch used determines which password will open the associated door.
+
+guard:         <roster>, <region #>
+
+     This guards <region #> with the roster <roster> which is four bytes.
+     The "member_edit" program is used to grant people access. Caribe does
+     not look at the status of a member, just that their name is on the
+     roster and their expiration date has not passed.
+
+actions:        <entry proc number>, <action type>, arg1 [, arg2 [, arg3]]
+
+     <entry proc number> is the entry proc that will adopt this particular
+     action. Entry proc values are set with twiddle. (set Entry_proc = #)
+
+     Action types are as follows:
+
+     color,    <color 1>, <color 2>
+
+          Sets the avatar's custom colors to <color 1> and <color 2>.
+
+          <color 1> = (LEG PATTERN (0 - 15)  x 16)  + TORSO PATTERN (0 - 15)
+          <color 2> = (ARM PATTERN (0 - 15)  x 16)
+
+          To turn someone nude, use PINK (2), which equates to:
+               <color 1> = (2 x 16) + 2, or 34
+               <color 2> = (2 x 16)    , or 32
+
+          To RESTORE SOMEONE'S ORIGINAL (TRUE) COLORS, use 255 for each
+          argument.  (color, 255, 255)
+
+     <continued on page 2>
+
+                                               CARIBE FUNCTIONALITY PAGE 2
+
+     moonwalk, <yes/no>
+
+          If set to yes (must be lowercase), people will start to moonwalk
+          from this point forward. If set to no, people will cease to
+          moonwalk. Maybe you could use this in a disco environment.
+
+     head,     <head #>
+
+          Set the avatar's head style to <head #>. If <head #> is 0, then
+          the avatar will revert to TRUE_HEAD_STYLE.
+
+     body,     <body type>
+
+          Set the avatar's body type to <body type>. 0 = human, 1-6 = custom.
+
+     sex,      <male/female>
+
+          Set the avatar's gender accordingly. male or female must be all
+          lowercase.
+
+     tallness, <tallness factor(0-15)>
+
+          Set the avatar's height. 0 = TALLEST, 15 = SHORTEST.
+          ** THIS IS NOT REVERSABLE **
+
+EXAMPLES:
+
+actions:  3, color, 34, 32
+actions:  3, moonwalk, yes
+actions:  3, head, 142
+actions:  3, sex, female
+actions:  3, tallness, 15
