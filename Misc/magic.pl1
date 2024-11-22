@@ -8,11 +8,16 @@
  *   4-March-1987
  */
 
-%include 'microcosm.incl.pl1';
-%include 'defs_helper.incl.pl1';
-%include 'defs_message.incl.pl1';
+%nolist; %include 'cc_sys_defs.incl.pl1';         %list;
+%nolist; %include 'cc_sys_strux.incl.pl1';        %list;
+%nolist; %include 'cc_regionproc_dcls.incl.pl1';  %list;
+%nolist; %include 'cc_helpers_dcls.incl.pl1';     %list;
+%nolist; %include 'cc_message_defs.incl.pl1';     %list;
+%nolist; %include 'cc_messages_dcls.incl.pl1';    %list;
+%nolist; %include 'cc_misc_dcls.incl.pl1';        %list;
+%nolist; %include 'cc_class_defs.incl.pl1';       %list;
 
-%replace NUMBER_OF_MAGICS by 29;    /* This should grow! */
+%replace NUMBER_OF_MAGICS by 30;    /* This should grow! */
 declare magical_actions(NUMBER_OF_MAGICS) entry variable external;
 
 declare magic_help(NUMBER_OF_MAGICS) character(114) varying static init(
@@ -48,13 +53,11 @@ declare magic_help(NUMBER_OF_MAGICS) character(114) varying static init(
                /* 15 -- recover_amulet */
           'Press button to vote.',
                /* 16 -- vote in election */
-          'God Tool: If Found, Dispose of immediately. Severe penalty for unaut
-+horized use ',
+          'God Tool: If Found, Dispose of immediately. Severe penalty for unauthorized use ',
                /* 17 -- God Tool */
           'Publishing Machine: Cost $2 per document to bind. DO to operate',
                /* 18 -- Publishing Machine */
-          'Bursting Machine: Cost $5 per page burst out of book.  DO to operate
-+',
+          'Bursting Machine: Cost $5 per page burst out of book.  DO to operate',
                /* 19 -- Bursting Machine */
           'Copy Machine: Cost $2 per page of document to copy. DO to operate',
                /* 20 -- Copy Machine */
@@ -68,14 +71,16 @@ declare magic_help(NUMBER_OF_MAGICS) character(114) varying static init(
                /* 24 -- Tokens dispenser */
           'Press me.',
                /* 25 -- Magic Opener */
-          'Lottery Vendroid. Hold $50 and DO to purchase a ticket.',
+          'Lottery Vendo. Hold $50 and DO to purchase a ticket.',
                /* 26 -- lottery ticket machine */
           'Lottery Redemption Center. Hold ticket and DO to recieve $.',
                /* 27 -- lottery payoff machine */
           'DO to activate.',
                /* 28 -- death magic */
-          'Try your luck.'
+          'Try your luck.',
                /* 29 -- Random Porter */
+          'Use this wisely!'
+               /* 30 -- generic token dispenser */
     );
 
 %replace NUMBER_OF_MAGIC_WORDS by 3; /*This should GROW*/
@@ -89,14 +94,14 @@ declare magic_words(NUMBER_OF_MAGIC_WORDS) character(114) varying static init(
 );
 
 generic_MAGIC: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
 
      call switch_reply;
      if (self.magic_type < 1 | self.magic_type > NUMBER_OF_MAGICS) then
           return;
      call n_msg_1(avatarptr, POSTURE$, OPERATE);
      if (self.charges = 0) then do;
-          call object_say(self.noid,'This device is out of charge.');
+          call object_say(NORM, self.noid,'This device is out of charge.');
           return;
      end;
      self.charges = self.charges - 1;
@@ -106,9 +111,9 @@ end generic_MAGIC;
 
 switch_reply: procedure;
      if (self.class = CLASS_SWITCH) then do;
-         call r_msg_1(self.gr_state);
+         call r_msg_1(NORM, self.gr_state);
      end; else
-         call r_msg_1(self.gr_state);
+         call r_msg_1(NORM, self.gr_state);
 end switch_reply;
 
 
@@ -116,47 +121,48 @@ initialize_magic: procedure;
      magical_actions(1)  = change_user_height;
      magical_actions(2)  = make_target_avatar_jump;
      magical_actions(3)  = make_other_avatars_turn_blue;
-     magical_actions(4)  = send_target_avatar_home;
-     magical_actions(5)  = illegal_magic;     /* not yet used? */
+     magical_actions(4)  = illegal_magic;    /* send_target_avatar_home; */
+     magical_actions(5)  = illegal_magic;
      magical_actions(6)  = switch_give_user_cooties;
-     magical_actions(7)  = switch_start_end_capture_flag;
-     magical_actions(8)  = switch_region_rally_winner;
+     magical_actions(7)  = illegal_magic;  /* switch_start_end_capture_flag; */
+     magical_actions(8)  = illegal_magic;    /* switch_region_rally_winner; */
      magical_actions(9)  = change_avatar_style;
-     magical_actions(10) = switch_gameshow_buzzer;
+     magical_actions(10) = illegal_magic;    /* switch_gameshow_buzzer; */
      magical_actions(11) = make_user_moonwalk;
      magical_actions(12) = switch_reset_chess;
      magical_actions(13) = switch_reset_checkers;
      magical_actions(14) = switch_reset_backgammon;
-     magical_actions(15) = recover_amulet;
+     magical_actions(15) = illegal_magic;    /* recover_amulet; */
      magical_actions(16) = tally_vote;
      magical_actions(17) = god_tool;
-     magical_actions(18) = binding_machine;
-     magical_actions(19) = bursting_machine;
-     magical_actions(20) = copy_machine;
-     magical_actions(21) = take_user_to_an_avatar;
+     magical_actions(18) = illegal_magic;    /* binding_machine; */
+     magical_actions(19) = illegal_magic;    /* bursting_machine; */
+     magical_actions(20) = illegal_magic;    /* copy_machine; */
+     magical_actions(21) = illegal_magic;    /* take_user_to_an_avatar; */
      magical_actions(22) = the_vaultkeeper;
      magical_actions(23) = free_dispenser;
-     magical_actions(24) = money_tree ;
+     magical_actions(24) = money_tree;
      magical_actions(25) = magic_opener;
-     magical_actions(26) = lottery;
-     magical_actions(27) = lottery_payoff;
-     magical_actions(28) = death_magic;
-     magical_actions(29) = random_porter;
+     magical_actions(26) = illegal_magic;    /* lottery; */
+     magical_actions(27) = illegal_magic;    /* lottery_payoff; */
+     magical_actions(28) = illegal_magic;    /* death_magic; */
+     magical_actions(29) = illegal_magic;    /* random_porter; */
+     magical_actions(30) = token_dispenser;
 end initialize_magic;
 
 generic_HELP_MAGIC: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
      declare the_message character(114) varying;
      if (self.magic_type < 1 | self.magic_type > NUMBER_OF_MAGICS) then
           the_message = 'Cryptic remark.';
      else
           the_message = magic_help(self.magic_type);
-     call r_msg_s(the_message);
+     call r_msg_s(NORM, the_message);
 end generic_HELP_MAGIC;
 
 magic_vendo_info: procedure(magicptr) returns(character(114) varying);
      declare magicptr pointer;
-     declare 1 magic based(magicptr) %include struct_gen_magic;
+     declare 1 magic based(magicptr) %include 'struct_gen_magic';
 
      if (magic.magic_type < 1) then
           return('Dead magic item.');
@@ -167,7 +173,7 @@ magic_vendo_info: procedure(magicptr) returns(character(114) varying);
 end magic_vendo_info;
 
 illegal_magic: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end illegal_magic;
 
 change_user_height: procedure;
@@ -179,8 +185,8 @@ change_user_height: procedure;
 end change_user_height;
 
 make_target_avatar_jump: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 target based(targetptr) %include struct_avatar;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 target based(targetptr) %include 'struct_avatar';
      declare targetptr pointer;
      %replace AV_ACT_JUMP by 139;
 
@@ -192,14 +198,14 @@ make_target_avatar_jump: procedure;
           else
               call b_msg_1(targetptr, POSTURE$, (self.magic_data));
      end; else
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
 end make_target_avatar_jump;
 
 avatar_target_check: procedure(targetptr) returns(bit(1) aligned);
      declare targetptr pointer;
-     declare 1 target based(targetptr) %include struct_head;
+     declare 1 target based(targetptr) %include 'struct_head';
      declare contptr pointer;
-     declare 1 cont based(contptr) %include struct_avatar;
+     declare 1 cont based(contptr) %include 'struct_avatar';
 
      if (targetptr = null()) then
           return(false);
@@ -216,7 +222,7 @@ avatar_target_check: procedure(targetptr) returns(bit(1) aligned);
 end avatar_target_check;
 
 make_other_avatars_turn_blue: procedure;
-     declare 1 target based(targetptr) %include struct_avatar;
+     declare 1 target based(targetptr) %include 'struct_avatar';
      declare targetptr pointer;
      declare userptr pointer;
      declare i binary(15);
@@ -226,11 +232,12 @@ make_other_avatars_turn_blue: procedure;
      do i=1 to 6;
           userptr = UserList(i);
           if (userptr ^= null()) then do;
-               targetptr = ObjList(userptr->u.object_slot);
+               targetptr = ObjList(userptr->player.object_slot);
                if (target.noid ^= avatar.noid) then do;
                     k = k + 1;
                     target.customize(1) = 0;
                     target.customize(2) = 0;
+                    target.gen_flags(MODIFIED) = true;
                     call b_msg_5(null(), FIDDLE_$, target.noid,
                          C64_customize_offset, 2, target.customize(1),
                          target.customize(2));
@@ -238,12 +245,12 @@ make_other_avatars_turn_blue: procedure;
           end;
      end;
      if (k = 0) then
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
 end make_other_avatars_turn_blue;
 
 send_target_avatar_home: procedure;
-     declare 1 self based (selfptr) %include struct_gen_magic;
-     declare 1 target based(targetptr) %include struct_avatar;
+     declare 1 self based (selfptr) %include 'struct_gen_magic';
+     declare 1 target based(targetptr) %include 'struct_avatar';
      declare targetptr pointer;
 
      targetptr = ObjList(rank(request(FIRST)));
@@ -257,18 +264,18 @@ send_target_avatar_home: procedure;
               call auto_teleport(targetptr, self.magic_data, TELEPORT_ENTRY);
           end;
      end; else
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
 end send_target_avatar_home;
 
 switch_give_user_cooties: procedure;
      declare dummy bit(1) aligned;
 
      dummy = activate_head_curse(avatarptr, CURSE_COOTIES);
-     call object_say(self.noid, 'Your mistake.');
+     call object_say(NORM, self.noid, 'Your mistake.');
 end switch_give_user_cooties;
 
 switch_start_end_capture_flag: procedure;
-     call object_say(self.noid, 'Nothing happens (yet).');
+     call object_say(NORM, self.noid, 'Nothing happens (yet).');
 end switch_start_end_capture_flag;
 
 recover_amulet: procedure;
@@ -278,17 +285,15 @@ end recover_amulet;
 
 switch_region_rally_winner: procedure;
      call message_to_god(selfptr,avatarptr,'Finished region rally!');
-     call object_say(self.noid, 'CONGRATULATIONS! The prize of $5000 will be di
-+v
+     call object_say(S_PAC, self.noid, 'CONGRATULATIONS! The prize of $5000 will be div
 ided by among all winners.');
-     call object_say(self.noid, 'You MUST exit the region within 1 minute, and 
-+n
+     call object_say(E_PAC, self.noid, 'You MUST exit the region within 1 minute, and n
 ot return here, to claim your prize.');
 end switch_region_rally_winner;
 
 change_avatar_style: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 target based(targetptr) %include struct_avatar;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 target based(targetptr) %include 'struct_avatar';
      declare targetptr pointer;
      declare target_style binary(15);
 
@@ -307,14 +312,14 @@ change_avatar_style: procedure;
           end; else do;
                call note_object_deletion(CLASS_AVATAR, target_style);
                call note_object_creation(CLASS_AVATAR, target.style);
-               call object_say(self.noid, 'That won''t work here now.');
+               call object_say(NORM, self.noid, 'That won''t work here now.');
           end;
      end; else
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
 end change_avatar_style;
 
 switch_gameshow_buzzer: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end switch_gameshow_buzzer;
 
 make_user_moonwalk: procedure;
@@ -375,26 +380,26 @@ switch_reset_backgammon: procedure;
      declare pieces binary(15) static initial (30);
 
      declare x_init(30) binary(15) static initial
-         ( 28,  28,  76,  76,  76,
-           76,  76, 112, 112, 112,
+         (  0,   0,  60,  60,  60,     
+           60,  60, 100, 100, 100,
           148, 148, 148, 148, 148,
-           28,  28,  76,  76,  76,
-           76,  76, 112, 112, 112,
-          148, 148, 148, 148, 148);
+          148, 148, 148, 148, 148,
+          100, 100, 100,  60,  60,
+           60,  60,  60,   0,   0);
      declare y_init(30) binary(15) static initial
-         (115, 103,  49,  37,  25,
-           13,   1,  25,  13,   1,
+         (115, 103, 115, 103,  91,
+           79, 195, 115, 103,  91,
           115, 103,  91,  79, 195,
-           13,   1, 115, 103,  91,
-           79,  67, 115, 103,  91,
-           49,  37,  25,  13,   1);
+           49,  37,  25,  13,   1,
+           25,  13,   1,  49,  37,
+           25,  13,   1,  13,   1);
      declare o_init(30) binary(15) static initial
-         ( 16,  16,  16,  16,  16,
-           16,  16,  16,  16,  16,
+         ( 16,  16,   0,   0,   0,
+            0,   0,   0,   0,   0,
            16,  16,  16,  16,  16,
             0,   0,   0,   0,   0,
-            0,   0,   0,   0,   0,
-            0,   0,   0,   0,   0);
+           16,  16,  16,  16,  16,
+           16,  16,  16,   0,   0);
      declare g_init(30) binary(15) static initial
          ( 8,   8,   8,   8,   8,
            8,   8,   8,   8,   8,
@@ -407,7 +412,7 @@ switch_reset_backgammon: procedure;
 end switch_reset_backgammon;
 
 reset_generic_boardgame: procedure(pieces, x_init, y_init, o_init, g_init);
-     declare 1 target based(targetptr) %include struct_game_piece;
+     declare 1 target based(targetptr) %include 'struct_game_piece';
      declare targetptr pointer;
      declare i binary(15);
      declare k binary(15);
@@ -460,53 +465,51 @@ reset_generic_boardgame: procedure(pieces, x_init, y_init, o_init, g_init);
           end;
      end;
      if (k = 1) then
-          call object_say (self.noid, 'Nothing happens.');
+          call object_say (NORM, self.noid, 'Nothing happens.');
      if (m ^= 0) then
          call b_msg_s(null(),FIDDLE_$,f_string);
 end reset_generic_boardgame;
 
 tally_vote: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
      declare issue_flag_bit binary(15);
 
      issue_flag_bit = self.magic_data2;
      if (avatar.nitty_bits(issue_flag_bit)) then
-          call object_say(self.noid, 'You have already voted on this issue.  Yo
-+u can''t vote again!');
+          call object_say(NORM, self.noid, 'You have already voted on this issue.  You can''t vote again!');
      else do;
           avatar.nitty_bits(issue_flag_bit) = '1'b;
+          avatar.gen_flags(MODIFIED) = true;
           self.magic_data = self.magic_data + 1;
           self.gen_flags(MODIFIED) = true;
-          call object_say(self.noid, 'Your vote has been tallied.  Thank you fo
-+r participating in the democratic process.');
+          call object_say(NORM, self.noid, 'Your vote has been tallied.  Thank you for participating in the democratic process.');
      end;
 end tally_vote;
 
 god_tool: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 target based(targetptr) %include struct_gen_object;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 target based(targetptr) %include 'struct_gen_object';
      declare targetptr pointer;
 
      targetptr = ObjList(rank(request(FIRST)));
-     self.magic_data = target.noid;               /* NOTE: DO NOT SET MODIFIED 
-+FLAG! */
+     self.magic_data = target.noid;               /* NOTE: DO NOT SET MODIFIED FLAG! */
      if (avatar.nitty_bits(GOD_FLAG) = '0'b)
      then do;
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
           call message_to_god(selfptr, avatarptr,
                'UNAUTHORIZED USE OF A GOD TOOL!');
           end;
      else do;
-          call object_say(self.noid, 
+          call object_say(S_PAC, self.noid, 
                'Remember to exit before changing regions.');
-          call p_msg_s(null(), avatarptr, PROMPT_USER_$, 'Edit: ');
+          call p_msg_s(E_PAC, null(), avatarptr, PROMPT_USER_$, 'Edit: ');
           end;
 end god_tool;
 
 god_tool_revisited: procedure;
-     declare 1 wand based(wandptr) %include struct_gen_magic;
+     declare 1 wand based(wandptr) %include 'struct_gen_magic';
      declare wandptr pointer;
-     declare 1 target based(targetptr) %include struct_sign;
+     declare 1 target based(targetptr) %include 'struct_sign';
      declare targetptr pointer;
      declare command_char char;
      declare textlen binary(15);
@@ -515,13 +518,13 @@ god_tool_revisited: procedure;
 
 /* expects request_string to have the prompt stripped off */
 
-     wandptr = ObjList(avatar.contents->c(5));
+     wandptr = ObjList(avatar.contents->element(5));
      if (wandptr = null()) then return;
      targetptr = ObjList(wand.magic_data);
      if (targetptr = null()) then return;
      if (avatar.nitty_bits(GOD_FLAG) = '0'b)
      then do;
-          call object_say(wand.noid, 'Nothing happens.');
+          call object_say(NORM, wand.noid, 'Nothing happens.');
           call message_to_god(wandptr, avatarptr,
                'UNAUTHORIZED USE OF A GOD TOOL!');
           end;
@@ -562,29 +565,23 @@ god_tool_revisited: procedure;
                               if (test_bit(target.orientation, 1)) 
                               then call clear_bit(target.orientation, 1); 
                               else call set_bit(target.orientation, 1);
-                              call modify_variable(target.orientation, C64_orie
-+nt_offset,
+                              call modify_variable(target.orientation, C64_orient_offset,
                                    target.orientation);
                               end;
                     if (command_char='p') then
-                         call modify_variable(target.orientation, C64_orient_of
-+fset,
+                         call modify_variable(target.orientation, C64_orient_offset,
                               target.orientation+8);
                     if (command_char='P') then
-                         call modify_variable(target.orientation, C64_orient_of
-+fset,
+                         call modify_variable(target.orientation, C64_orient_offset,
                               target.orientation-8);
                     if (command_char='s') then
-                         call modify_variable(target.gr_state, C64_gr_state_off
-+set,
+                         call modify_variable(target.gr_state, C64_gr_state_offset,
                               0);
                     if (command_char='S') then
-                         call modify_variable(target.gr_state, C64_gr_state_off
-+set,
+                         call modify_variable(target.gr_state, C64_gr_state_offset,
                               target.gr_state+1);
                     if (command_char='i') then
-                         call object_say(wand.noid, '#' || ltrim(target.obj_id)
-+);
+                         call object_say(NORM, wand.noid, '#' || ltrim(target.obj_id));
                     if (command_char='t') then
                       do;
                       textlen = 0;
@@ -609,7 +606,7 @@ god_tool_revisited: procedure;
                          end;
                     end;
                  end;
-               call p_msg_s(null(), avatarptr, PROMPT_USER_$, 'Edit: ');
+               call p_msg_s(NORM, null(), avatarptr, PROMPT_USER_$, 'Edit: ');
                end;
           end;
      return;
@@ -630,31 +627,30 @@ end modify_variable;
 end god_tool_revisited;
 
 binding_machine: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end binding_machine;
 
 bursting_machine: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end bursting_machine;
 
 copy_machine: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end copy_machine;
 
 take_user_to_an_avatar: procedure;
-     call object_say(self.noid, 'Nothing happens.');
+     call object_say(NORM, self.noid, 'Nothing happens.');
 end take_user_to_an_avatar;
 
 the_vaultkeeper: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 objt based(objptr) %include struct_key;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 objt based(objptr) %include 'struct_key';
      declare objptr pointer;
 
-     if (avatar.nitty_bits(MISC_FLAG1)) then do;  
-          call object_say(self.noid, 'What are you looking for? Besides, the Tr
-+ans-dimensional doorway doesn''t even open until 7!');
-          call object_say(self.noid, 'By the way, do you play backgammon?');
-          call object_say(self.noid, 'No smoking here, please!');
+     if (avatar.nitty_bits(MISC_FLAG1)) then do;     
+          call object_say(S_PAC, self.noid, 'What are you looking for? Besides, the Trans-dimensional doorway doesn''t even open until 7!');
+          call object_say(PAC,   self.noid, 'By the way, do you play backgammon?');
+          call object_say(E_PAC, self.noid, 'No smoking here, please!');
      end;
      else do;
           objptr = dispense(CLASS_KEY,self.x,20);
@@ -666,17 +662,16 @@ the_vaultkeeper: procedure;
           objt.orientation = 8;
           call announce_object(objptr);
           self.gen_flags(MODIFIED) = true;
-          call object_say(self.noid, 'Okay, okay, here''s one! Don''t lose it, 
-+it''s not like these things grow on trees!');
+          call object_say(NORM, self.noid, 'Okay, okay, here''s one! Don''t lose it, it''s not like these things grow on trees!');
      end;
 end the_vaultkeeper;
 
 free_dispenser: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 objt based(objptr) %include struct_book;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 objt based(objptr) %include 'struct_book';
      declare objptr pointer;
      if (avatar.nitty_bits(MISC_FLAG2)) then
-          call object_say(self.noid, 'Sorry! One to a customer!');
+          call object_say(NORM, self.noid, 'Sorry! One to a customer!');
      else do;
           objptr = dispense(CLASS_BOOK,self.x,20);
           if (objptr = null()) then return;
@@ -687,16 +682,16 @@ free_dispenser: procedure;
           objt.gr_state = 1;
           call announce_object(objptr);
           self.gen_flags(MODIFIED) = true;
-          call object_say(self.noid, 'There you go. Enjoy!');
+          call object_say(NORM, self.noid, 'There you go. Enjoy!');
      end;
 end free_dispenser;
 
 money_tree: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 objt based(objptr) %include struct_tokens;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 objt based(objptr) %include 'struct_tokens';
      declare objptr pointer;
      if (avatar.nitty_bits(MISC_FLAG3)) then
-          call object_say(self.noid, 'Sorry! One to a customer!');
+          call object_say(NORM, self.noid, 'Sorry! One to a customer!');
      else do;
           objptr = dispense(CLASS_TOKENS,self.x,20);
           if (objptr = null()) then return;
@@ -705,15 +700,33 @@ money_tree: procedure;
           call tset(objptr,self.magic_data);
           call announce_object(objptr);
           self.gen_flags(MODIFIED) = true;
-          call object_say(self.noid, 'There you go. Enjoy!');
+          call object_say(NORM, self.noid, 'There you go. Enjoy!');
      end;
 end money_tree;
+
+token_dispenser: procedure;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 objt based(objptr) %include 'struct_tokens';
+     declare objptr pointer;
+     if (avatar.nitty_bits(MISC_FLAG4)) then
+          call object_say(NORM, self.noid, 'Sorry! One to a customer!');
+     else do;
+          objptr = dispense(CLASS_TOKENS,self.x,20);
+          if (objptr = null()) then return;
+          avatar.nitty_bits(MISC_FLAG4) = '1'b;
+          avatar.gen_flags(MODIFIED) = true;
+          call tset(objptr,self.magic_data);
+          objptr->self.gen_flags(RESTRICTED) = true;    /* restricted TOKEN */
+          call announce_object(objptr);
+          call object_say(NORM, self.noid, 'There you go. Enjoy!');
+     end;
+end token_dispenser;
 
 dispense: procedure(new_class,new_x,new_y) returns(pointer);
      declare new_class binary(15);
      declare new_x binary(15);
      declare new_y binary(15);
-     declare 1 newobj based(newobjptr) %include struct_gen_container;
+     declare 1 newobj based(newobjptr) %include 'struct_gen_container';
      declare newobjptr pointer; 
      newobjptr = create_object(new_class, 0, 0, 0, 0, 0, 0, 0);
      if (newobjptr = null()) then return(null());
@@ -727,13 +740,13 @@ end dispense;
 
 magic_opener: procedure;
      avatar.customize(3) = self.noid;
-     call p_msg_s(null(), avatarptr, PROMPT_USER_$, 'Yes? ');
+     call p_msg_s(NORM, null(), avatarptr, PROMPT_USER_$, 'Yes? ');
 end magic_opener;
 
 magic_opener_revisited: procedure;
-     declare 1 wand based(wandptr) %include struct_gen_magic;
+     declare 1 wand based(wandptr) %include 'struct_gen_magic';
      declare wandptr pointer;
-     declare 1 door based(doorptr) %include struct_gen_door;
+     declare 1 door based(doorptr) %include 'struct_gen_door';
      declare doorptr pointer;
 
      wandptr = ObjList(avatar.customize(3));
@@ -742,7 +755,7 @@ magic_opener_revisited: procedure;
      then return;
      if (lookfor_string(request_string,magic_words(wand.magic_data))>0)
      then do;
-             call object_say(wand.noid, '> click <');
+             call object_say(NORM, wand.noid, '> click <');
              doorptr = ObjList(avatar.customize(3)+1);
                                    /*MUST be NEXT object!*/
              if (doorptr=null()) then return;
@@ -756,16 +769,16 @@ magic_opener_revisited: procedure;
              return;
      end;
 end magic_opener_revisited;
-
+/*  lottery code removed 3/29/89 when class_ticket was removed.
 lottery: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare tokenptr pointer;
      declare amount binary(31);
 
 %replace LOTTO_COST by 50;
 
-     tokenptr = ObjList(avatar.contents->c(5));
+     tokenptr = ObjList(avatar.contents->element(5));
      if (tokenptr = null()) then goto lotto_fail;
      if (token.class ^= CLASS_TOKENS) then goto lotto_fail;
      amount = tget(tokenptr);
@@ -784,40 +797,49 @@ lottery: procedure;
      self.magic_data = self.magic_data + LOTTO_COST;
      self.gen_flags(MODIFIED) = true;
      avatar.customize(3) = self.noid;
-     call p_msg_s(null(), avatarptr, PROMPT_USER_$,
+     call p_msg_s(NORM, null(), avatarptr, PROMPT_USER_$,
                             'Enter your 3 digit number: ');
      return;
 
 lotto_fail:
-     call object_say(self.noid, '$50 required.');
+     call object_say(NORM, self.noid, '$50 required.');
      return;
 
 end lottery;
 
 lottery_revisited: procedure;
-     declare 1 wand based(wandptr) %include struct_gen_magic;
+     declare 1 wand based(wandptr) %include 'struct_gen_magic';
      declare wandptr pointer;
-     declare 1 newobj based(objptr) %include struct_ticket;
+     declare 1 newobj based(objptr) %include 'struct_ticket';
      declare objptr pointer;
      declare lotto_number binary(15);
+     declare lotto_temp   binary(31);
+     declare request_temp char(80) var;
+
+     declare s$convert_constant entry (char(*) var, bin(31), bin(15));
+     declare compress_name      entry (char(*) var, char(*) var);
 
      wandptr = ObjList(avatar.customize(3));
      if (wandptr = null()) then return;
-     lotto_number = decimal(request_string);
+     call compress_name (request_string, request_temp);
+     call s$convert_constant (request_temp, lotto_temp, lotto_number);
+     if (lotto_number = 0)
+          then lotto_number = lotto_temp;
+          else lotto_number = 0;
      if (lotto_number < 0 | lotto_number > 999) then lotto_number = 0;
      lotto_number = wand.magic_data2 * 1000 + lotto_number;
      objptr = dispense(CLASS_TICKET,wand.x,30);
      if (objptr = null()) then return;
      newobj.event = lotto_number;
      call announce_object(objptr);
-     call object_say(self.noid, 'Good Luck!!!');
+     call object_say(NORM, self.noid, 'Good Luck!!!');
 end lottery_revisited;
 
 lottery_payoff: procedure;
-     declare 1 self based(selfptr) %include struct_gen_magic;
-     declare 1 ticket based(ticketptr) %include struct_ticket;
+     declare 1 self based(selfptr) %include 'struct_gen_magic';
+     declare 1 ticket based(ticketptr) %include 'struct_ticket';
      declare ticketptr pointer;
-     declare 1 objt based(objptr) %include struct_tokens;
+     declare 1 objt based(objptr) %include 'struct_tokens';
      declare objptr pointer;
      declare lotto_number binary(15);
      declare win_amount binary(15);
@@ -828,7 +850,7 @@ lottery_payoff: procedure;
      declare temp_val binary(15);
      declare dummy bit(1);
 
-     ticketptr = ObjList(avatar.contents->c(HANDS));
+     ticketptr = ObjList(avatar.contents->element(HANDS));
      if (ticketptr = null()) then goto payoff_fail;
      if (ticket.class ^= CLASS_TICKET) then goto payoff_fail;
      series = self.magic_data2;
@@ -841,20 +863,20 @@ lottery_payoff: procedure;
      win_amount = 0;
      if (ones_digit = self.magic_data5) then do;
          win_amount = 250;
-         call object_say(self.noid, 'Digit 3 Matches!');
+         call object_say(S_PAC, self.noid, 'Digit 3 Matches!');
          if (tens_digit = self.magic_data4) then do;
              win_amount = 2500;
-             call object_say(self.noid, 'Digit 2 Matches!!');
+             call object_say(PAC, self.noid, 'Digit 2 Matches!!');
              if (hundreds_digit = self.magic_data3) then do;
                  win_amount = 25000;
-                 call object_say(self.noid, 'Digit 1 Matches!!!! Jackpot!');
+                 call object_say(PAC, self.noid, 'Digit 1 Matches!!!! Jackpot!');
             end;
          end;
      end;
      call destroy_object(ticket.noid);
      call b_msg_1(null(), GOAWAY_$, ticket.noid);
      if (win_amount = 0) then
-          call object_say(self.noid, 'Sorry! This ticket is not a winner.');
+          call object_say(NORM, self.noid, 'Sorry! This ticket is not a winner.');
      else do;
           objptr = dispense(CLASS_TOKENS,HANDS,HANDS);
           if (objptr = null()) then return;
@@ -863,27 +885,27 @@ lottery_payoff: procedure;
           call announce_object(objptr);
           self.magic_data = self.magic_data + win_amount;
           self.gen_flags(MODIFIED) = true;
-          call object_say(self.noid, 'There you go. Enjoy!');
+          call object_say(E_PAC, self.noid, 'There you go. Enjoy!');
      end;
 
      return;
 
 payoff_fail:
-     call object_say(self.noid, 'Sorry, you must be holding a valid ticket.');
-     call object_say(self.noid, 'This machine will only redeem series #'
+     call object_say(S_PAC, self.noid, 'Sorry, you must be holding a valid ticket.');
+     call object_say(E_PAC, self.noid, 'This machine will only redeem series #'
                            || ltrim (self.magic_data2*1000) || '.');
      return;
 
 end lottery_payoff;
-
+*/
 death_magic: procedure;
           call object_broadcast(self.noid, 'ZZZZZAP!');
           call kill_avatar(avatarptr);
 end death_magic;
 
 random_porter: procedure;
-     declare 1 self based (selfptr) %include struct_gen_magic;
-     declare 1 target based(targetptr) %include struct_avatar;
+     declare 1 self based (selfptr) %include 'struct_gen_magic';
+     declare 1 target based(targetptr) %include 'struct_avatar';
      declare targetptr pointer;
      declare temp_region binary(31);
 
@@ -895,9 +917,9 @@ random_porter: procedure;
           if (self.magic_data = 0) then do;
               call auto_teleport(targetptr, target.turf, TELEPORT_ENTRY);
           end; else do;
-          temp_region = self.magic_data + random(10) - 1;
+              temp_region = self.magic_data + random(10) - 1;
               call auto_teleport(targetptr, temp_region, TELEPORT_ENTRY);
           end;
      end; else
-          call object_say(self.noid, 'Nothing happens.');
+          call object_say(NORM, self.noid, 'Nothing happens.');
 end random_porter;

@@ -8,61 +8,26 @@
  *   8-April-1986
  */
 
-%include 'microcosm.incl.pl1';
+%nolist; %include 'cc_sys_defs.incl.pl1';         %list;
+%nolist; %include 'cc_sys_strux.incl.pl1';        %list;
+%nolist; %include 'cc_class_defs.incl.pl1';       %list;
+%nolist; %include 'cc_regionproc_dcls.incl.pl1';  %list;
+%nolist; %include 'cc_misc_dcls.incl.pl1';        %list;
+%nolist; %include 'cc_message_defs.incl.pl1';     %list;
+%nolist; %include 'cc_messages_dcls.incl.pl1';    %list;
 
-declare BUGON bit(1) static external;
 declare random_seed  binary(31) external;
 
-declare adjacent entry(pointer) returns(bit(1) aligned);
-declare change_regions entry(binary(15), binary(31), binary(15), binary(15));
-declare disappear_object entry(binary(15));
-declare clear_bit entry(binary(15), binary(15));
-declare checkpoint_object entry (binary(31), binary(15));
-declare container_is_opaque entry (bin(15), bin(15)) returns(bit(1) aligned);
-declare create_object entry(binary(15), binary(15), binary(15), binary(15),
-     binary(15), binary(15), binary(15), binary(15)) returns(pointer);
-declare destroy_object entry(binary(15));
-declare record_collection entry(binary(31), binary(15), binary(15), binary(31))
-+;
-declare set_bit entry(binary(15), binary(15));
-declare test_bit entry(binary(15), binary(15)) returns(bit(1) aligned);
-declare trace_msg entry(character(*) varying);
 declare s$get_random_number entry (binary(31));
-
-declare mem_checks_ok           entry (bin(15)) returns (bit(1)  aligned);
-declare note_object_creation    entry (bin(15), bin(15));
-declare note_instance_creation  entry (bin(15), bin(15));
-declare note_object_deletion    entry (bin(15), bin(15));
-declare note_instance_deletion  entry (bin(15), bin(15));
-
-declare p_msg_0 entry(pointer, pointer, binary(15));
-declare p_msg_1 entry(pointer, pointer, binary(15), binary(15));
-declare b_msg_0 entry(pointer, binary(15));
-declare b_msg_1 entry(pointer, binary(15), binary(15));
-declare b_msg_4 entry(pointer, binary(15), binary(15), binary(15), binary(15), 
-+binary(15));
-declare e_msg_1 entry(pointer, pointer, binary(15), binary(15));
-declare e_msg_s entry(pointer, pointer, binary(15), character(*) varying);
-declare n_msg_1 entry(pointer, binary(15), binary(15));
-declare b_msg_s entry(pointer, binary(15), character(*) varying);
-declare n_msg_s entry(pointer, binary(15), character(*) varying);
-declare b_msg_1_s entry(pointer, binary(15), binary(15), character(*) varying);
-declare p_msg_1_s entry(pointer, pointer, binary(15), binary(15), character(*) 
-+varying);
-declare r_msg_1 entry(binary(15));
 
 /*
  * accessable -- Return true iff a given object can be reached by the avatar.
  *
  */
 accessable: procedure(objptr) recursive returns(bit(1) aligned);
-     declare 1 object based(objptr) %include struct_gen_object;
+     declare 1 object based(objptr) %include 'struct_gen_object';
      declare objptr pointer;
 
-     if (BUGON) then
-          call trace_msg('accessable ' || ltrim(object.noid) || ' container is 
-+' ||
-          ltrim(object.container));
      if (object.container = THE_REGION) then
           return(adjacent(objptr));
      else
@@ -76,8 +41,6 @@ end accessable;
 announce_object: procedure(objptr);
      declare objptr pointer;
 
-     if (BUGON) then
-        call trace_msg('announce_object: ' || ltrim(objptr->o.noid));
      call b_msg_s(null(), HEREIS_$, vectorize(objptr));
 end announce_object;
 
@@ -97,35 +60,36 @@ end at_water;
  * In particular, it temporarily clobbers self.noid!
  *
  */
-drop_object_in_hand: procedure(whoptr);
-     declare 1 who based(whoptr) %include struct_avatar;
+drop_object: procedure(whoptr, slot);
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare whoptr pointer;
-     declare 1 obj based(objptr) %include struct_gen_object;
+     declare slot  bin(15);
+     declare 1 obj based(objptr) %include 'struct_gen_object';
      declare objptr pointer;
      declare dummy bit(1);
 
-     if (who.contents->c(HANDS) ^= NULL) then do;
-          objptr = ObjList(who.contents->c(HANDS));
+     if (who.contents->element(slot) ^= NULL) then do;
+          objptr = ObjList(who.contents->element(slot));
           obj.x = 8;
           obj.y = 130;
           call b_msg_4(null(), CHANGE_CONTAINERS_$, obj.noid, THE_REGION,
                obj.x, obj.y);
           dummy = change_containers(obj.noid, THE_REGION, obj.y, true);
      end;
-end drop_object_in_hand;
+end drop_object;
 
 auto_teleport: procedure(whoptr, where, entry_mode);
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare whoptr pointer;
      declare where binary(31);
      declare entry_mode binary(15);
 
-     if (UserList(who.avatarslot)->u.auto_destination = 0) then do;
-          UserList(who.avatarslot)->u.auto_destination = where;
-          UserList(who.avatarslot)->u.auto_mode = entry_mode;
-          call p_msg_1(null(), whoptr, AUTO_TELEPORT_$, AUTO_TELEPORT_DIR);
+     if (UserList(who.avatarslot)->player.auto_destination = 0) then do;
+          UserList(who.avatarslot)->player.auto_destination = where;
+          UserList(who.avatarslot)->player.auto_mode = entry_mode;
+          call p_msg_1(NORM, null(), whoptr, AUTO_TELEPORT_$, AUTO_TELEPORT_DIR);
      end; else
-          call object_say(avatar.noid, 'Too late!');
+          call object_say(NORM, avatar.noid, 'Too late!');
 end auto_teleport;
 
 /*
@@ -134,7 +98,7 @@ end auto_teleport;
  */
 available: procedure(container_noid, x, y) returns(bit(1) aligned);
      declare container_noid binary(15);
-     declare 1 container based(containerptr) %include struct_gen_container;
+     declare 1 container based(containerptr) %include 'struct_gen_container';
      declare containerptr pointer;
      declare x binary(15);
      declare y binary(15);
@@ -148,7 +112,7 @@ available: procedure(container_noid, x, y) returns(bit(1) aligned);
      else if (container.contents = null()) then
           result = false;
      else
-          result = (container.contents->c(y) = NULL);
+          result = (container.contents->element(y) = NULL);
      return(result);
 end available;
 
@@ -172,13 +136,11 @@ change_containers: procedure(obj_noid, new_container_noid, new_position, cp)
     declare obj_noid binary(15);
     declare new_container_noid binary(15);
     declare objptr pointer;
-    declare 1 obj based (objptr) %include struct_gen_object;
+    declare 1 obj based (objptr) %include 'struct_gen_object';
     declare new_containerptr pointer;
-    declare 1 new_container based(new_containerptr) %include struct_gen_contain
-+er;
+    declare 1 new_container based(new_containerptr) %include 'struct_gen_container';
     declare old_containerptr pointer;
-    declare 1 old_container based(old_containerptr) %include struct_gen_contain
-+er;
+    declare 1 old_container based(old_containerptr) %include 'struct_gen_container';
     declare new_position binary(15);
     declare cp bit(1) aligned;
 
@@ -193,14 +155,18 @@ change_containers: procedure(obj_noid, new_container_noid, new_position, cp)
      if (^ heap_space_available(0)) then return(false);
 
      if (obj.container ^= THE_REGION) then
-          old_container.contents->c(obj.position) = NULL;
+          old_container.contents->element(obj.position) = NULL;
      if (new_container_noid ^= THE_REGION) then
-          new_container.contents->c(new_position) = obj_noid;
+          new_container.contents->element(new_position) = obj_noid;
      obj.container = new_container_noid;
      obj.position = new_position;
 
      obj.gen_flags(MODIFIED) = true;
-     if (cp) then call checkpoint_object (0,obj.noid);
+     if (^cp) then return (true);
+
+     if (obj.class = CLASS_AVATAR)
+          then call checkpoint_object (NULL_REGION,obj.noid);
+          else call checkpoint_object (0,obj.noid);
      return (true);
 
 heap_space_available: procedure (dmy) returns (bit(1) aligned);
@@ -243,13 +209,13 @@ end dequeue_player;
  *
  */
 destroy_contents: procedure(containerptr);
-     declare 1 container based(containerptr) %include struct_gen_container;
+     declare 1 container based(containerptr) %include 'struct_gen_container';
      declare containerptr pointer;
      declare i binary(15);
 
      do i=0 to Class_Table(container.class).capacity-1;
-          if (container.contents->c(i) ^= NULL) then
-               call destroy_object(container.contents->c(i));
+          if (container.contents->element(i) ^= NULL) then
+               call destroy_object(container.contents->element(i));
      end;
 end destroy_contents;
 
@@ -258,10 +224,10 @@ end destroy_contents;
  *
  */
 empty_handed: procedure(whoptr) returns(bit(1) aligned);
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare whoptr pointer;
 
-     return (who.contents->c(HANDS) = NULL);
+     return (who.contents->element(HANDS) = NULL);
 end empty_handed;
 
 /*
@@ -280,7 +246,7 @@ end enqueue_player;
  *
  */
 getable: procedure(objptr) returns(bit(1) aligned);
-     declare 1 object based(objptr) %include struct_rock;
+     declare 1 object based(objptr) %include 'struct_rock';
      declare objptr pointer;
 
      if (object.class = CLASS_ROCK | object.class = CLASS_FLAG) then
@@ -289,17 +255,16 @@ getable: procedure(objptr) returns(bit(1) aligned);
 end getable;
 
 /*
- * grabable -- Return true iff a given object can be grabbed from an avatar's h
-+and.
+ * grabable -- Return true iff a given object can be grabbed from an avatar's hand.
  *
  */
 grabable: procedure(objptr) returns(bit(1) aligned);
-     declare 1 object based(objptr) %include struct_gen_object;
+     declare 1 object based(objptr) %include 'struct_gen_object';
      declare objptr pointer;
 
-     if (current_region.nitty_bits(STEAL_FREE) |
-               object.class = CLASS_PAPER | object.class = CLASS_BOOK |
-               object.class = CLASS_TOKENS |
+	if (current_region.nitty_bits(STEAL_FREE) |
+     		object.class = CLASS_PAPER | object.class = CLASS_BOOK |
+			object.class = CLASS_TOKENS |
                (object.class = CLASS_MAGIC_LAMP & object.gr_state =
                 MAGIC_LAMP_GENIE)) then
           return(false);
@@ -312,26 +277,18 @@ end grabable;
  */
 goto_new_region: procedure(whoptr, where, direction, transition_type);
      declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare where binary(31);
      declare direction binary(15);
      declare transition_type binary(15);
      declare i binary(15);
-     declare 1 obj based(objptr) %include struct_gen_switch;
+     declare 1 obj based(objptr) %include 'struct_gen_switch';
      declare objptr pointer;
 
      if (who.class = CLASS_AVATAR) then do;            /* NOT a ghost */
-/*         call set_bit(who.gr_state, 7); */
-/*          call lights_off(whoptr);*/
-     end;
-     if (BUGON) then
-          call trace_msg('gotonewregion avatar:' || ltrim(who.noid) || ' where:
-+' ||
-          ltrim(where));
-     if (who.class = CLASS_GHOST) then
-          call record_collection(userptr->u.U_Id, HS$adjust, HS$travel, 1);
-     else
-           call inc_record(whoptr, HS$travel);
+/*        call set_bit(who.gr_state, 7);
+          call lights_off(whoptr);          */
+          end;
      if (where = Region) then do;
           if (who.class = CLASS_AVATAR) then do;
                call n_msg_1(null(), GOAWAY_$, who.noid);
@@ -339,21 +296,21 @@ goto_new_region: procedure(whoptr, where, direction, transition_type);
           end;
           call region_entry_daemon(direction, transition_type,
                current_region.orientation, Region);
-          call r_msg_1(TRUE);
+          call r_msg_1(NORM, SUCCESS);
      end; else
           call change_regions(who.noid, where, direction, transition_type);
 end goto_new_region;
 
 lights_off: procedure(whoptr);
      declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare lightptr pointer;
-     declare 1 light based(lightptr) %include struct_flashlight;
+     declare 1 light based(lightptr) %include 'struct_flashlight';
 
-     if (who.contents->c(HANDS) ^= NULL) then do;
-        lightptr = ObjList(who.contents->c(HANDS));
+     if (who.contents->element(HANDS) ^= NULL) then do;
+        lightptr = ObjList(who.contents->element(HANDS));
         if (light.class = CLASS_FLASHLIGHT) then
-             if (light.on = TRUE) then do;
+             if (light.on = SUCCESS) then do;
                   current_region.lighting = current_region.lighting - 1;
                   call b_msg_1(null(), CHANGELIGHT_$, -1);
              end;
@@ -362,16 +319,16 @@ end lights_off;
 
 lights_on: procedure(whoptr);
      declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare lightptr pointer;
-     declare 1 light based(lightptr) %include struct_flashlight;
+     declare 1 light based(lightptr) %include 'struct_flashlight';
 
      /* Special things to do with certain things in hand */
-     if (who.contents->c(HANDS) ^= NULL) then do;
-          lightptr = ObjList(who.contents->c(HANDS));
+     if (who.contents->element(HANDS) ^= NULL) then do;
+          lightptr = ObjList(who.contents->element(HANDS));
           /* If holding a flashlight on entry, turn on the lights */
           if (light.class = CLASS_FLASHLIGHT) then do;
-               if (light.on = TRUE) then do;
+               if (light.on = SUCCESS) then do;
                     current_region.lighting = current_region.lighting + 1;
                     call b_msg_1(null(), CHANGELIGHT_$, 1);
                end;
@@ -388,11 +345,11 @@ end lights_on;
  *
  */
 holding: procedure(objptr) returns(bit(1) aligned);
-     declare 1 object based(objptr) %include struct_gen_object;
+     declare 1 object based(objptr) %include 'struct_gen_object';
      declare objptr pointer;
 
      return (object.container = avatar.noid &
-             avatar.contents->c(HANDS) = object.noid);
+             avatar.contents->element(HANDS) = object.noid);
 end holding;
 
 
@@ -401,10 +358,10 @@ end holding;
  *
  */
 wearing: procedure(objptr) returns(bit(1) aligned);
-     declare 1 object based(objptr) %include struct_gen_object;
+     declare 1 object based(objptr) %include 'struct_gen_object';
      declare objptr pointer;
 
-     return (avatar.contents->c(HEAD) = object.noid);
+     return (avatar.contents->element(HEAD) = object.noid);
 end wearing;
 
 /*
@@ -415,7 +372,7 @@ holding_class: procedure(class_number) returns(bit(1) aligned);
      declare class_number binary(15);
 
      return (^empty_handed(avatarptr) &
-             ObjList(avatar.contents->c(HANDS))->o.class = class_number);
+             ObjList(avatar.contents->element(HANDS))->object.class = class_number);
 end holding_class;
 
 /*
@@ -425,19 +382,19 @@ end holding_class;
  */
 item_value: procedure(itemptr) returns(binary(15));
      declare itemptr pointer;
-     declare 1 item based(itemptr) %include struct_gen_object;
+     declare 1 item based(itemptr) %include 'struct_gen_object';
      %replace MAX_CLASS_VALUE by 127;
      declare class_values(0:MAX_CLASS_VALUE) binary(15) static init
-/*   0 */    (0,   0,   1,   0,   0,   0,  25,  10, 0,  0, /*   9 */
-/*  10 */     1,  20,   5,  40,   0,   0, 100, 100, 0,  0, /*  19 */
-/*  20 */ 30000,   0,   0,   0,   0,   5, 800,  20, 0,  0, /*  29 */
-/*  30 */    11,  47,   0,   1,   0, 400,   0, 600, 0,  0, /*  39 */
-/*  40 */     0,   0,   1,   1, 200,   0, 100,  30, 0,  1, /*  49 */
-/*  50 */     0,   0,   5,   0,   0,   0,   0,   0, 1,  0, /*  59 */
-/*  60 */     1,   1,   0, 800,  50,   0,   0,   0, 0,  0, /*  69 */
-/*  70 */     0,   0,   0,   0,   0,   1,   0,   0, 0,  0, /*  79 */
-/*  80 */     0,   0, 150,   0, 400,   0,   0,   0, 0, 75, /*  89 */
-/*  90 */     0, 900,   0,   0,   0,  25,   0,   0, 0,  0, /*  99 */
+/*   0 */    (0,   0,   1,   0,   0,   0,   3,   1, 0,  0, /*   9 */
+/*  10 */     1,   0,   1,   4,   0,   0,   0,   2, 0,  0, /*  19 */
+/*  20 */     0,   0,   0,   0,   0,   5,   0,   0, 0,  0, /*  29 */
+/*  30 */     2,   0,   0,  15,   0,   0,   0,   0, 0,  0, /*  39 */
+/*  40 */     0,   0,   1,   2,   0,   0,   5,   0, 0,  0, /*  49 */
+/*  50 */     0,   0,   0,   0,   0,   0,   0,   0, 0,  0, /*  59 */
+/*  60 */     1,   0,   0,   0,   0,   0,   0,   0, 0,  0, /*  69 */
+/*  70 */     0,   0,   0,   0,   0,   0,   0,   0, 0,  0, /*  79 */
+/*  80 */     0,   0,   1,   0,   0,   0,   0,   0, 0,  3, /*  89 */
+/*  90 */     0,   0,   0,   0,   0,   2,   0,   0, 0,  0, /*  99 */
 /* 100 */     0,   0,   0,   0,   0,   0,   0,   0, 0,  0, /* 109 */
 /* 110 */     0,   0,   0,   0,   0,   0,   0,   0, 0,  0, /* 119 */
 /* 120 */     0,   0,   0,   0,   0,   0,   0,  10); /* 127 */
@@ -454,18 +411,18 @@ end item_value;
  */
 kill_avatar: procedure(victimptr);
      declare victimptr pointer;
-     declare 1 victim based(victimptr) %include struct_avatar;
-     declare 1 object based(objectptr) %include struct_gen_object;
+     declare 1 victim based(victimptr) %include 'struct_avatar';
+     declare 1 object based(objectptr) %include 'struct_gen_object';
      declare objectptr pointer;
      declare i binary(15);
 
      do i=0 to Class_Table(CLASS_AVATAR).capacity-1;
-          if (victim.contents->c(i) ^= NULL) then do;
+          if (victim.contents->element(i) ^= NULL) then do;
                if (i = HANDS) then do;
-                    call drop_object_in_hand(victimptr);
+                    call drop_object (victimptr, HANDS);
                end; else if (i ^= HEAD & i ^= MAIL_SLOT) then do;
-                    call disappear_object(victim.contents->c(i));
-                    victim.contents->c(i) = NULL;
+                    call disappear_object(victim.contents->element(i));
+                    victim.contents->element(i) = NULL;
                end;
           end;
      end;
@@ -474,7 +431,8 @@ kill_avatar: procedure(victimptr);
      victim.health = 255;
      victim.bank_account_balance = float(victim.bank_account_balance, 15) * .8;
      victim.stun_count = 0;
-     call set_record(victimptr, HS$wealth, victim.bank_account_balance);
+     victim.gen_flags(MODIFIED) = true;
+/*   call set_record(victimptr, HS$wealth, victim.bank_account_balance);
      call inc_record(victimptr, HS$deaths);
      call set_record(victimptr, HS$travel, 0);
      call set_record(victimptr, HS$explored, 0);
@@ -489,6 +447,7 @@ kill_avatar: procedure(victimptr);
      call set_record(victimptr, HS$esp_recv_count, 0);
      call set_record(victimptr, HS$mail_recv_count, 0);
      call set_record(victimptr, HS$requests, 0);
+*/                 
      call auto_teleport(victimptr, victim.turf, DEATH_ENTRY);
 end kill_avatar;
 
@@ -509,17 +468,18 @@ end object_broadcast;
  * object_say -- Make a particular object speak to one person.
  *
  */
-object_say: procedure(obj_noid, text);
+object_say: procedure(msg_type, obj_noid, text);
+     declare msg_type binary(15);
      declare obj_noid binary(15);
      declare text character(*) varying;
 
-     call p_msg_1_s(null(), avatarptr, OBJECTSPEAK_$, obj_noid, text);
+     call p_msg_1_s(msg_type, null(), avatarptr, OBJECTSPEAK_$, obj_noid, text);
 end object_say;
 ghost_say: procedure(obj_noid, text);
      declare obj_noid binary(15);
      declare text character(*) varying;
 
-     call p_msg_1_s(null(), null(), OBJECTSPEAK_$, obj_noid, text);
+     call p_msg_1_s_ghost(NORM, null(), OBJECTSPEAK_$, obj_noid, text);
 end ghost_say;
 
 /*
@@ -529,7 +489,7 @@ end ghost_say;
 
 tset: procedure(tokenptr, amount);
      declare tokenptr pointer;
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare amount binary(31);
 
      if (amount > 65535) then do;
@@ -544,19 +504,20 @@ end tset;
 
 tget: procedure(tokenptr) returns(binary(31));
      declare tokenptr pointer;
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
 
      return(token.denom_lo + 256*token.denom_hi);
 end tget;
 
 pay_to: procedure(whoptr, amount) returns(bit(1) aligned);
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
      declare whoptr pointer;
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare tokenptr pointer;
      declare amount binary(31);
+     declare temp_amt binary(31);
 
-     tokenptr = ObjList(who.contents->c(HANDS));
+     tokenptr = ObjList(who.contents->element(HANDS));
      if (empty_handed(whoptr)) then do;
           tokenptr = create_object(CLASS_TOKENS, 0,0,0, HANDS, 0,0, who.noid);
           if (tokenptr = null()) then
@@ -564,10 +525,10 @@ pay_to: procedure(whoptr, amount) returns(bit(1) aligned);
           call tset(tokenptr, amount);
           call announce_object(tokenptr);
      end; else if (token.class = CLASS_TOKENS) then do;
-          amount = amount + tget(tokenptr);
-          if (amount > 65535) then
+          temp_amt = amount + tget(tokenptr);
+          if (temp_amt > 65535) then
                return(false);
-          call tset(tokenptr, amount);
+          call tset(tokenptr, temp_amt);
      end; else do;
           tokenptr = create_object(CLASS_TOKENS, 0, who.x, who.y, 0, 0, 0,
                THE_REGION);
@@ -601,8 +562,7 @@ end random;
  */
 random_time_in_the_future: procedure returns(binary(31));
      /* Ask JH how this works */
-     call trace_msg('helpers: unimplemented proc "random_time_in_the_future" ca
-+lled');
+     call trace_msg('helpers: unimplemented proc "random_time_in_the_future" called');
 end random_time_in_the_future;
 
 /*
@@ -625,10 +585,10 @@ end schedule_event;
 spend: procedure(amount) returns(binary(15));
      declare amount binary(31);
      declare tvalue binary(31);
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare tokenptr pointer;
 
-     tokenptr = ObjList(avatar.contents->c(HANDS));
+     tokenptr = ObjList(avatar.contents->element(HANDS));
      if (holding_class(CLASS_TOKENS)) then do;
           tvalue = tget(tokenptr);
           if (tvalue >= amount) then do;
@@ -637,18 +597,18 @@ spend: procedure(amount) returns(binary(15));
                token.gen_flags(MODIFIED) = true;
                if (tvalue = 0) then
                     call destroy_object(token.noid);
-               return(TRUE);
+               return(SUCCESS);
           end;
      end;
-     return(FALSE);
+     return(FAILURE);
 end spend;
 
 spend_check: procedure(amount) returns(bit(1) aligned);
      declare amount binary(31);
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare tokenptr pointer;
 
-     tokenptr = ObjList(avatar.contents->c(HANDS));
+     tokenptr = ObjList(avatar.contents->element(HANDS));
      if (holding_class(CLASS_TOKENS)) then
           return(tget(tokenptr) >= amount);
      return(false);
@@ -656,7 +616,7 @@ end spend_check;
 
 vectorize: procedure(objptr) returns(character(256) varying);
      declare objptr pointer;
-     declare 1 obj based(objptr) %include struct_gen_object;
+     declare 1 obj based(objptr) %include 'struct_gen_object';
      declare content character(1150) varying external;
      declare databytes character(1150) varying external;
      declare ContList character(1150) varying external;
@@ -673,8 +633,6 @@ vectorize: procedure(objptr) returns(character(256) varying);
           result = '';
      else
           result = content || byte(0) || databytes || ContList;
-     if (BUGON) then
-          call trace_msg('vectorize: result:' || result);
      return(result);
 end vectorize;
 
@@ -695,13 +653,12 @@ end vectorize;
 %replace DOOR_OFFSET by 12;
 %replace BUILDING_OFFSET by 28;
     
-region_entry_daemon: procedure(direction, transition_type, old_orientation, fro
-+m_region);
+region_entry_daemon: procedure(direction, transition_type, old_orientation, from_region);
      declare direction binary(15);
      declare transition_type binary(15);
      declare old_orientation binary(15);
      declare from_region binary(31);
-     declare 1 token based(tokenptr) %include struct_tokens;
+     declare 1 token based(tokenptr) %include 'struct_tokens';
      declare tokenptr pointer;
      declare i binary(15);
      declare denom binary(15);
@@ -709,7 +666,7 @@ region_entry_daemon: procedure(direction, transition_type, old_orientation, fro
      declare new_activity binary (15);
      declare arrival_face binary(15);
      declare new_x binary(15), new_y binary(15);
-     declare 1 obj based(objptr) %include struct_door;
+     declare 1 obj based(objptr) %include 'struct_door';
      declare objptr pointer;
 
      /* If travelling as a ghost, don't do ANYTHING fancy */
@@ -750,16 +707,14 @@ region_entry_daemon: procedure(direction, transition_type, old_orientation, fro
                     objptr = ObjList(i);
                     if (objptr ^= null()) then do;
                          if (obj.class = CLASS_DOOR) then do;
-                              if (obj.connection = from_region | obj.connection
-+ = 0) then do;
+                              if (obj.connection = from_region | obj.connection = 0) then do;
                                    new_y = obj.y;
                                    new_x = obj.x + DOOR_OFFSET;
                                    if (test_bit(obj.orientation, 1)) then
                                         new_x = new_x - 16;
                                end;
                          end; else if (obj.class = CLASS_BUILDING) then do;
-                              if (obj.connection = from_region | obj.connection
-+ = 0) then do;
+                              if (obj.connection = from_region | obj.connection = 0) then do;
                                    new_x = obj.x + BUILDING_OFFSET;
                               end;
                          end;
@@ -852,60 +807,28 @@ y_scale: procedure(y) returns(binary(15));
 end y_scale;
 end region_entry_daemon;
 
-/* These routines are helpful in managing access to the Hall of Records */
-
-inc_record: procedure(whoptr, record);
-     declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
-     declare record binary(15);
-
-     call record_collection(UserList(who.avatarslot)->u.U_Id, HS$adjust,
-          record, 1);
-end inc_record;
-
-set_record: procedure(whoptr, record, value);
-     declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
-     declare record binary(15);
-     declare value binary(31);
-
-     call record_collection(UserList(who.avatarslot)->u.U_Id, HS$set, record,
-          value);
-end set_record;
-
-max_record: procedure(whoptr, record, value);
-     declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
-     declare record binary(15);
-     declare value binary(31);
-
-     call record_collection(UserList(who.avatarslot)->u.U_Id, HS$max, record,
-          value);
-end max_record;
-
 change_region_fail: procedure(who_noid);
      declare who_noid binary(15);
      declare whoptr pointer;
-     declare 1 who based(whoptr) %include struct_avatar;
+     declare 1 who based(whoptr) %include 'struct_avatar';
 
      whoptr = ObjList(who_noid);
      if (who.class = CLASS_AVATAR) then do;
-          call clear_bit(who.gr_state, 7);
-          call object_say(who_noid, 'That way is blocked right now.');
+/*        call clear_bit(who.gr_state, 7);        */
+     call object_say(NORM, who_noid, 'That way is blocked right now.');
      end; else
-          call ghost_say(who_noid, 'That way is blocked right now.');
+		call ghost_say(who_noid, 'That way is blocked right now.');
 end change_region_fail;
 
 lookfor_string: procedure(sourcestring,substring) returns (binary(15));
-     declare sourcestring character(*) varying;
-     declare substring character(*) varying;
-     return (index(lowercase(sourcestring),lowercase(substring)));
+	declare sourcestring character(*) varying;
+	declare substring character(*) varying;
+	return (index(lowercase(sourcestring),lowercase(substring)));
 end lookfor_string;
 
 lowercase: procedure(mixedstring) returns (character(256) varying);
-     declare mixedstring character(*) varying;
-     return (translate(mixedstring,'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMN
-+OPQRSTUVWXYZ'));
+	declare mixedstring character(*) varying;
+	return (translate(mixedstring,'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'));
 end lowercase;
 
 %replace EOF        by 0;
@@ -1104,3 +1027,4 @@ unescape_string: procedure(string);
      end control_character;
 
 end unescape_string;
+
