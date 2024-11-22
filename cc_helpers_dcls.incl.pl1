@@ -1,0 +1,51 @@
+/*
+ *   cc_helpers_dcls.incl.pl1
+ *
+ *   Entry definitions for the helper functions.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   8-April-1986
+ *
+ */
+
+declare accessable            entry (pointer) returns(bit(1) aligned);
+declare announce_object       entry (pointer);
+declare at_water              entry returns (bit(1) aligned);
+declare auto_teleport         entry (pointer, bin(31), bin(15));
+declare available             entry (bin(15), bin(15), bin(15)) 
+                                     returns (bit(1) aligned);
+declare cancel_event          entry (pointer);
+declare change_containers     entry (bin(15), bin(15), bin(15), bit(1) aligned)
+                                     returns (bit(1) aligned);
+declare dequeue_player        entry (pointer);
+declare destroy_contents      entry (pointer);
+declare drop_object           entry (pointer, bin(15));
+declare getable               entry (pointer) returns(bit(1) aligned);
+declare ghost_say             entry (bin(15), char(*) var);
+declare grabable              entry (pointer) returns (bit(1) aligned);
+declare empty_handed          entry (pointer) returns(bit(1) aligned);
+declare enqueue_player        entry (pointer);
+declare goto_new_region       entry (pointer, bin(31), bin(15), bin(15));
+declare holding               entry (pointer) returns(bit(1) aligned);
+declare holding_class         entry (bin(15)) returns(bit(1) aligned);
+declare item_value            entry (pointer) returns(bin(15));
+declare kill_avatar           entry (pointer);
+declare lights_off            entry (pointer);
+declare lights_on             entry (pointer);
+declare lookfor_string        entry (char(*) var, char(*) var)
+                                     returns (bin(15));
+declare object_broadcast      entry (bin(15), char(*) var);
+declare object_say            entry (bin(15), bin(15), char(*) var);
+declare pay_to                entry (pointer, bin(31)) returns(bit(1) aligned);
+declare random                entry (bin(15)) returns(bin(15));
+declare random_time_in_the_future entry returns(bin(31));
+declare region_entry_daemon   entry (bin(15), bin(15), bin(15), bin(31));
+declare schedule_event        entry (pointer, entry, bin(31)) returns(pointer);
+declare spend                 entry (bin(31)) returns(bin(15));
+declare spend_check           entry (bin(31)) returns(bit(1) aligned);
+declare tget                  entry (pointer) returns(bin(31));
+declare tset                  entry (pointer, bin(31));
+declare unescape_string       entry (char(*) var);
+declare vectorize             entry (pointer) returns(char(256) var);
+declare wearing               entry (pointer) returns(bit(1) aligned);

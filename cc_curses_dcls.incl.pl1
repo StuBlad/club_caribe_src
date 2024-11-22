@@ -1,0 +1,2 @@
+declare activate_head_curse   entry (pointer, bin(15)) returns(bit(1) aligned);
+declare curse_touch           entry (pointer, pointer);

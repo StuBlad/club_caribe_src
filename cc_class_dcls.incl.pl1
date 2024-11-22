@@ -97,32 +97,6 @@
   declare initialize_drugs                       entry;
 
   declare activate_teleporter     entry (bin(31), bin(15), bin(15));
-  declare avatar_IDENTIFY_SELF    entry (char(20) var);
-  declare clear_bit               entry (bin(15), bin(15));
-  declare drop_object_in_hand     entry (pointer);
   declare generic_READMAIL_result entry (bin(31), bin(15));
   declare generic_SET_OPEN_BITS   entry;
-  declare lights_off              entry (pointer);
-  declare lights_on               entry (pointer);
-  declare mem_checks_ok           entry (bin(15)) returns (bit(1) aligned);
-  declare note_object_creation    entry (bin(15), bin(15));
-  declare note_instance_creation  entry (bin(15), bin(15));
-  declare note_object_deletion    entry (bin(15), bin(15));
-  declare note_instance_deletion  entry (bin(15), bin(15));
-  declare p_msg_s                 entry (bin(15), pointer, pointer, bin(15), char(*) var);
-  declare r_msg_1                 entry (bin(15), bin(15));
-  declare region_entry_daemon     entry (bin(15), bin(15), bin(15), bin(31));
   declare send_book_title         entry (char(40) var, bin(15));
-  declare set_bit                 entry (bin(15), bin(15));
-  declare speak_msg               entry (pointer, bin(15), char(*) var, bin(15));
-
-  declare 1 Class_Table(0:255)  external %include 'struct_class';
-
-  declare behavior(0:255)         entry     based;
-
-  declare 1 Daemons(1:5)          external,
-            2 EntryRoutine        entry,
-            2 ExitRoutine         entry;
-  %replace MAX_EntryDaemon        by 2;
-  %replace MAX_ExitDaemon         by 0;
-

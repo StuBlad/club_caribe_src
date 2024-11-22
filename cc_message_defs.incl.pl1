@@ -1,5 +1,5 @@
 /*
- *   defs_message.incl.pl1
+ *   cc_message_defs.incl.pl1 (formerly, defs_message.incl.pl1)
  *
  *   Include file defining MicroCosm message numbers for various messages.
  *
@@ -175,3 +175,11 @@
 %replace WISH$           by  8;
 %replace ZAPIN$          by  9;
 %replace ZAPTO$          by 10;
+
+/* send_message constants */
+/* Bit definitions:                XXXX XXXX                          */
+%replace NORM  by 0;          /*           ^- 0=Normal, 1=Packed      */
+%replace S_PAC by 3;          /*          ^-- Start packed msg        */
+%replace PAC   by 1;
+%replace E_PAC by 5;          /*         ^--- End packed msg          */
+

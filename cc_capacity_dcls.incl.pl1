@@ -1,0 +1,4 @@
+declare note_object_deletion entry(binary(15), binary(15));
+declare note_object_creation entry(binary(15), binary(15));
+declare mem_checks_ok entry(binary(15)) returns(bit(1) aligned);
+

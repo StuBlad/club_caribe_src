@@ -1,16 +1,21 @@
-          2    activity                      binary(15),
-          2    action                        binary(15),
-          2    health                        binary(15),
-          2    restrainer                    binary(15),
-          2    customize(3)                  binary(15),
-/* Host specific: */
-          2    bank_account_balance          binary(31),
-          2    turf                          binary(31),
-          2    stun_count                    binary(15),
-          2    nitty_bits(32)                bit(1),
-          2    true_orientation              binary(15),
-          2    true_head_style               binary(15),
-          2    true_custom(3)                binary(15),
-          2    curse_type                    binary(15),
-          2    curse_counter                 binary(15),
-          2    last_login                    binary(31);
+/*   MicroCosm AVATAR Database                                           */
+
+
+     10 ident            bin(31),            /* Q-Link Subaccount number      */
+     10 location         ,
+        20 region        bin(31),            /* where he last was             */
+        20 inside        bin(31),            /* Id of "container", eg couch   */
+        20 x_pos         bin(15),
+        20 y_pos         bin(15),
+     10 home_turf        bin(31),            /* region # of avatar's home     */
+     10 graphic_st       bin(15),
+     10 graphic_wd       bin(15),
+     10 genl_flags(32)   bit(1),
+     10 orientation      bin(15),
+     10 prof_length      bin(15),
+     10 style            character(1),
+     10 test_group       character(1),
+     10 filler           character(26),
+     10 name             character(10),      /* as user entered it            */
+     10 screen_name      character(10),      /* compressed from of above      */
+     10 profile          character(100)      /* avatar customization values   */

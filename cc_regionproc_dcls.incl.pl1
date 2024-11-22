@@ -1,0 +1,37 @@
+declare change_regions        entry (bin(15), bin(31), bin(15), bin(15));
+declare checkpoint_object     entry (bin(31), bin(15));
+declare checkpoint_text       entry (bin(31), char(*) varying);
+declare close_container       entry (bin(15));
+declare container_is_opaque   entry (bin(15), bin(15)) returns(bit(1) aligned);
+declare create_object         entry (bin(15), bin(15), bin(15), bin(15), 
+                                     bin(15), bin(15), bin(15), bin(15))
+                                     returns (pointer);
+declare destroy_object        entry (bin(15));
+declare disappear_object      entry (bin(15));
+declare get_container_contents entry(bin(15));
+declare get_mail_message      entry (pointer);
+declare get_region_name       entry (bin(31));
+declare get_title_page        entry (bin(31), bin(15));
+declare global_id             entry (bin(15)) returns(bin(31));
+declare handle_internal_cmds  entry (bin(15), char(*) var);
+declare identify_players_here entry returns(bit(1) aligned);
+declare identify_teleport     entry (char(20) varying);
+declare message_to_god        entry (pointer, pointer, char(*) var);
+declare privileged_user       entry returns (bit(1) aligned);
+declare process_messager_name entry;
+declare process_messager_msg  entry;
+declare request_player_list   entry (char(10) var);
+declare send_mail_message     entry (pointer, bin(31)) returns(bin(15));
+declare send_region_contents  entry;
+declare set_offline           entry (binary(15));
+declare show_heap_usage       entry returns(bit(1) aligned);
+declare show_text_page        entry (bin(31), bin(15), bin(15));
+declare switch_from_ghost     entry;
+declare switch_to_ghost       entry;
+declare update_object_disk    entry;
+
+declare ClearTactByValue      entry (entry(pointer), pointer);
+declare info_trace_msg        entry (char(*) var);
+declare Tact                  entry (entry(pointer), pointer, bin(31));
+declare trace_msg             entry (char(*) var);
+

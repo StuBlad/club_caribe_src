@@ -1,0 +1,5 @@
+declare adjacent              entry (pointer) returns (bit(1) aligned);
+declare check_path            entry (bin(15), bin(15), bin(15), bin(15),
+                                     bin(15), bit(1) aligned);
+declare elsewhere             entry (pointer) returns(bit(1) aligned);
+declare here                  entry (pointer) returns(bit(1) aligned);

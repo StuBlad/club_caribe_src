@@ -34,22 +34,34 @@ declare 1 snap_env       based,
 %replace req$locate_player    by 10;
 %replace req$check_mail       by 11;
 
-declare 1 obj_desc       based,
-          2 id           bin(31),
-          2 container    bin(31),
-          2 x_pos        bin(15),
-          2 class        char(1),
-          2 contype      char(1),
-          2 position     char(1),
-          2 y_pos        char(1),
-          2 style        char(1),
-          2 orientation  char(1),
-          2 graph_state  char(1),
-          2 graph_width  char(1),
-          2 var_field    bin(15),
-          2 gen_flags(32) bit(1),
-          2 prop_len     bin(15),
-          2 props        char(80);
+declare 1 obj_desc            based,
+          2 fixed_fields      ,
+            3 id              bin(31),
+            3 container       bin(31),
+            3 x_pos           bin(15),
+            3 class           char(1),
+            3 contype         char(1),
+            3 position        char(1),
+            3 y_pos           char(1),
+            3 style           char(1),
+            3 orientation     char(1),
+            3 graph_state     char(1),
+            3 graph_width     char(1),
+            3 var_field       bin(15),
+            3 gen_flags(32)   bit(1),
+            3 prop_len        bin(15),
+          2 vary_len_fields   ,
+            3 props           char(80);
+
+declare 1 region_desc         based,
+          2 fixed_fields      like obj_desc.fixed_fields,
+          2 prop_len          bin(15),
+          2 props             ,
+            3 links(4)        bin(31),
+            3 exits(4)        bin(15),
+            3 name            char(20),
+            3 town            char(1),
+            3 port            char(1);
 
 %replace object_id_type  by 1;
 %replace text_id_type    by 2;

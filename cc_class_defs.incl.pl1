@@ -1,5 +1,5 @@
 /*
- *   defs_class.incl.pl1
+ *   cc_class_defs.incl.pl1, (formerly, defs_class.incl.pl1)
  *
  *   Assign class numbers to classes.
  *

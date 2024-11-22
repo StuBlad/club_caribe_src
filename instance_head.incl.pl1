@@ -21,3 +21,4 @@
           2    container      binary(15),
           2    gr_width       binary(15),
           2    gen_flags(32)  bit(1)        /* note absence of comma */
+

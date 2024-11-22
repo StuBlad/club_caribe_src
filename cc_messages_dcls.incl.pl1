@@ -1,0 +1,52 @@
+declare n_msg_0     entry (pointer, bin(15));
+declare n_msg_1     entry (pointer, bin(15), bin(15));
+declare n_msg_1_s   entry (pointer, bin(15), bin(15), char(*) var);
+declare n_msg_2_s   entry (pointer, bin(15), bin(15), bin(15), char(*) var);
+declare n_msg_3_s   entry (pointer, bin(15), bin(15), bin(15), bin(15), 
+                           char(*) var);
+declare n_msg_2     entry (pointer, bin(15), bin(15), bin(15));
+declare n_msg_3     entry (pointer, bin(15), bin(15), bin(15), bin(15));
+declare n_msg_4     entry (pointer, bin(15), bin(15), bin(15), bin(15), 
+                           bin(15));
+declare n_msg_5     entry (pointer, bin(15), bin(15), bin(15), bin(15),
+                           bin(15), bin(15));
+declare n_msg_6     entry (pointer, bin(15), bin(15), bin(15), bin(15),
+                           bin(15), bin(15), bin(15));
+declare n_msg_s     entry (pointer, bin(15), char(*) var);
+
+declare b_msg_0     entry (pointer, bin(15));
+declare b_msg_1     entry (pointer, bin(15), bin(15));
+declare b_msg_1_s   entry (pointer, bin(15), bin(15), char(*) var);
+declare b_msg_2     entry (pointer, bin(15), bin(15), bin(15));
+declare b_msg_3     entry (pointer, bin(15), bin(15), bin(15), bin(15));
+declare b_msg_4     entry (pointer, bin(15), bin(15), bin(15), bin(15),
+                           bin(15));
+declare b_msg_5     entry (pointer, bin(15), bin(15), bin(15), bin(15),
+                           bin(15), bin(15));
+declare b_msg_7     entry (pointer, bin(15), bin(15), bin(15), bin(15),
+                           bin(15), bin(15), bin(15), bin(15));
+declare b_msg_s     entry (pointer, bin(15), char(*) var);
+
+declare p_msg_0     entry (bin(15), pointer, pointer, bin(15));
+declare p_msg_1     entry (bin(15), pointer, pointer, bin(15), bin(15));
+declare e_msg_1     entry (pointer, pointer, bin(15), bin(15));
+declare p_msg_1_s   entry (bin(15), pointer, pointer, bin(15), bin(15), 
+                           char(*) var);
+declare p_msg_1_s_ghost
+                    entry (bin(15), pointer, bin(15), bin(15), char(*) var);
+declare p_msg_s     entry (bin(15), pointer, pointer, bin(15), char(*) var);
+declare e_msg_s     entry (pointer, pointer, bin(15), char(*) var);
+
+declare r_msg_1     entry (bin(15), bin(15));
+declare r_msg_2     entry (bin(15), bin(15), bin(15));
+declare r_msg_3     entry (bin(15), bin(15), bin(15), bin(15));
+declare r_msg_4     entry (bin(15), bin(15), bin(15), bin(15), bin(15));
+declare r_msg_5     entry (bin(15), bin(15), bin(15), bin(15), bin(15), 
+                           bin(15));
+declare r_msg_1_s   entry (bin(15), bin(15), char(*) var);
+declare r_msg_2_s   entry (bin(15), bin(15), bin(15), char(*) var);
+declare r_msg_3_s   entry (bin(15), bin(15), bin(15), bin(15), char(*) var);
+declare r_msg_s     entry (bin(15), char(*) var);
+
+declare end_packed_msg entry;
+declare speak_msg   entry (pointer, bin(15), char(*) var, bin(15));

@@ -1,0 +1,1332 @@
+%nolist; %include 'cc_sys_defs.incl.pl1';         %list;
+%nolist; %include 'cc_sys_strux.incl.pl1';        %list;
+%nolist; %include 'cc_helpers_dcls.incl.pl1';     %list;
+%nolist; %include 'cc_actions_dcls.incl.pl1';     %list;
+%nolist; %include 'cc_message_defs.incl.pl1';     %list;
+%nolist; %include 'cc_messages_dcls.incl.pl1';    %list;
+%nolist; %include 'cc_regionproc_dcls.incl.pl1';  %list;
+%nolist; %include 'cc_misc_dcls.incl.pl1';        %list;
+%nolist; %include 'cc_class_defs.incl.pl1';       %list;
+
+%replace NUMBER_OF_DRUG_EFFECTS by 3;
+
+declare drug_effects(NUMBER_OF_DRUG_EFFECTS) entry variable static;
+declare drug_help(NUMBER_OF_DRUG_EFFECTS) character(114) varying static init(
+     'Healing pills: good for what ails you.',    /* 1 -- heal_avatar */
+     'DANGER!!  POISON!!',                        /* 2 -- poison_avatar */
+     'Darkening tablets.'                         /* 3 -- turn_avatar_black */
+);
+
+declare ground_HELP entry;
+
+/*
+ *   obj_amulet.pl1
+ *
+ *   Amulet object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   7-April-1986
+ */
+
+initialize_class_amulet: procedure;
+
+%replace AMULET_REQUESTS by 4;
+
+     declare a(0:AMULET_REQUESTS) entry based;
+     declare class_amulet_actions pointer;
+     declare 1 amulet based %include 'struct_amulet';
+
+     declare I bin(15) static initial(CLASS_AMULET);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = AMULET_REQUESTS;
+     Class_Table(I).alloc_size = size(amulet);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_amulet_actions);
+     Class_Table(I).actions = class_amulet_actions;
+
+     Class_Table(I).actions->a(HELP)  = generic_HELP_MAGIC; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(MAGIC) = generic_MAGIC; /* 4 */
+
+end initialize_class_amulet;
+
+/*
+ *   class_aquarium.pl1
+ *
+ *   Aquarium object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   9-April-1986
+ */
+
+initialize_class_aquarium: procedure;
+
+     %replace AQUARIUM_REQUESTS by 4;
+
+     declare a(0:AQUARIUM_REQUESTS) entry based;
+     declare class_aquarium_actions pointer;
+     declare 1 aquarium based %include 'struct_aquarium';
+
+     declare I bin(15) static initial(CLASS_AQUARIUM);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = AQUARIUM_REQUESTS;
+     Class_Table(I).alloc_size = size(aquarium);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_aquarium_actions);
+     Class_Table(I).actions = class_aquarium_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(FEED)  = aquarium_FEED; /* 4 */
+
+end initialize_class_aquarium;
+
+%replace FISH_SWIMMING   by 1;
+%replace FISH_FEEDING    by 2;
+%replace FISH_DEAD       by 3;
+%replace FISH_GONE       by 4;
+
+%replace FISH_FEED_DELAY by 1 /* five minutes */;
+%replace FISH_DEATH_DELAY by 288 /* one day */;
+
+aquarium_FEED: procedure;
+     declare junk pointer;
+     declare 1 self based(selfptr) %include 'struct_aquarium';
+
+     if (holding_class(CLASS_FISH_FOOD) & adjacent(selfptr) & self.state = 
+               FISH_SWIMMING) then do;
+          self.state = self.gr_state = FISH_FEEDING;
+          call n_msg_1(selfptr, CHANGESTATE$, self.state);
+          call cancel_event(self.fish_die);
+          self.fish_die = null();
+          self.gen_flags(MODIFIED) = true;
+          junk = schedule_event(selfptr, Fish_Fed, FISH_FEED_DELAY);
+     end;
+end;
+
+Fish_Fed: procedure;
+     declare 1 self based(selfptr) %include 'struct_aquarium';
+
+     self.state = self.gr_state = FISH_SWIMMING;
+     call b_msg_1(selfptr, CHANGESTATE$, self.state);
+     self.fish_die = schedule_event(selfptr, Fish_Die, FISH_DEATH_DELAY);
+     self.gen_flags(MODIFIED) = true;
+end;
+
+Fish_Die: procedure;
+     declare 1 self based(selfptr) %include 'struct_aquarium';
+
+     self.state = self.gr_state = FISH_DEAD;
+     self.fish_die = null();
+     call b_msg_1(selfptr, CHANGESTATE_$, self.state);
+     self.gen_flags(MODIFIED) = true;
+end;
+/*
+ *   class_ball.pl1
+ *
+ *   Ball object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   9-April-1986
+ */
+
+initialize_class_ball: procedure;
+
+     %replace BALL_REQUESTS by 3;
+
+     declare a(0:BALL_REQUESTS) entry based;
+     declare class_ball_actions pointer;
+     declare 1 ball based %include 'struct_ball';
+
+     declare I bin(15) static initial(CLASS_BALL);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = BALL_REQUESTS;
+     Class_Table(I).alloc_size = size(ball);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_ball_actions);
+     Class_Table(I).actions = class_ball_actions;
+
+     Class_Table(I).actions->a(HELP)  = ball_HELP;     /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+
+end initialize_class_ball;
+%page;
+ball_HELP: procedure;
+     declare 1 self based(selfptr) %include 'struct_ball';
+
+     if (self.style = 0) then
+          call r_msg_s(NORM, 'BALL: Recommended for ages 3 through adult.');
+     else
+          call r_msg_s(NORM, 'BOOMERANG: Do not use near power lines.');
+
+end ball_HELP;
+%page;
+/*
+ *   class_bottle.pl1
+ *
+ *   Bottle object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   9-April-1986
+ */
+
+initialize_class_bottle: procedure;
+
+     %replace BOTTLE_REQUESTS by 5;
+
+     declare a(0:BOTTLE_REQUESTS) entry based;
+     declare class_bottle_actions pointer;
+     declare 1 bottle based %include 'struct_bottle';
+
+     declare I bin(15) static initial(CLASS_BOTTLE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = BOTTLE_REQUESTS;
+     Class_Table(I).alloc_size = size(bottle);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+
+     allocate a set(class_bottle_actions);
+     Class_Table(I).actions = class_bottle_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(3)     = illegal;       /* 3 */
+     Class_Table(I).actions->a(FILL)  = bottle_FILL;   /* 4 */
+     Class_Table(I).actions->a(POUR)  = bottle_POUR;   /* 5 */
+
+end initialize_class_bottle;
+
+bottle_FILL: procedure;
+     declare result binary(15);
+     declare 1 self based(selfptr) %include 'struct_bottle';
+
+     result = (holding(selfptr) & self.filled = FAILURE & at_water());
+     if (result = SUCCESS) then do;
+          self.filled = SUCCESS;
+          self.gr_state = SUCCESS;
+          self.gen_flags(MODIFIED) = true;
+          call n_msg_1(selfptr, FILL$, avatar.noid);
+     end;
+     call r_msg_1(NORM, result);
+end;
+
+bottle_POUR: procedure;
+     declare 1 self based(selfptr) %include 'struct_bottle';
+     declare result binary(15);
+
+     if (holding(selfptr) & self.filled = SUCCESS) then do;
+          self.filled = FAILURE;
+          self.gr_state = FAILURE;
+          self.gen_flags(MODIFIED) = true;
+          call n_msg_1(selfptr, POUR$, avatar.noid);
+          result = SUCCESS;
+     end; else
+          result = FAILURE;
+     call r_msg_1(NORM, result);
+end bottle_POUR;
+/*
+ *   class_bridge.pl1
+ *
+ *   Bridge object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ */
+
+initialize_class_bridge: procedure;
+
+     %replace BRIDGE_REQUESTS by 0;
+
+     declare a(0:0) entry based;
+     declare 1 bridge based %include 'struct_bridge';
+     declare class_bridge_actions pointer;
+
+     declare I bin(15) static initial(CLASS_BRIDGE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = BRIDGE_REQUESTS;
+     Class_Table(I).alloc_size = size(bridge);
+     Class_Table(I).pc_state_bytes = 2;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_bridge_actions);
+     Class_Table(I).actions = class_bridge_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_bridge;
+
+/*
+ *   class_building.pl1
+ *
+ *   Behavior module for object class building.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   12-April-1986
+ */
+
+initialize_class_building: procedure;
+     declare a(0:0) entry based;
+     declare 1 building based %include 'struct_building';
+     declare class_building_actions pointer;
+
+     %replace BUILDING_REQUESTS by 0;
+
+     declare I bin(15) static initial(CLASS_BUILDING);
+
+     Class_Table(I).capacity = 0;
+     allocate a set(class_building_actions);
+     Class_Table(I).actions = class_building_actions;
+     Class_Table(I).max_requests = BUILDING_REQUESTS;
+     Class_Table(I).alloc_size = size(building);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_building;
+
+/*
+ *   class_bush.pl1
+ *
+ *   Bush object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ */
+
+initialize_class_bush: procedure;
+
+     %replace BUSH_REQUESTS by 0;
+
+     declare a(0:0) entry based;
+     declare 1 bush based %include 'struct_bush';
+     declare class_bush_actions pointer;
+
+     declare I bin(15) static initial(CLASS_BUSH);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = BUSH_REQUESTS;
+     Class_Table(I).alloc_size = size(bush);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_bush_actions);
+     Class_Table(I).actions = class_bush_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_bush;
+
+
+/*
+ *   class_chair.pl1
+ *
+ *   Object behavior module for class chair.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ *
+ */
+
+initialize_class_chair: procedure;
+
+     %replace CHAIR_REQUESTS by 0;
+
+     declare a(0:0) entry based;
+     declare 1 chair based %include 'struct_chair';
+     declare class_chair_actions pointer;
+
+     declare I bin(15) static initial(CLASS_CHAIR);
+
+     Class_Table(I).capacity = 1;
+     Class_Table(I).max_requests = CHAIR_REQUESTS;
+     Class_Table(I).alloc_size = size(chair);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_chair_actions);
+     Class_Table(I).actions = class_chair_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_chair;
+
+/*
+ *   class_chest.pl1
+ *
+ *   Behavior module for object class chest.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ */
+
+%replace CHEST_CAPACITY by 20;
+
+initialize_class_chest: procedure;
+
+     %replace CHEST_REQUESTS by 5;
+
+     declare a(0:CHEST_REQUESTS) entry based;
+     declare class_chest_actions pointer;
+     declare 1 chest based %include 'struct_chest';
+
+     declare I bin(15) static initial(CLASS_CHEST);
+
+     Class_Table(I).capacity = CHEST_CAPACITY;
+     Class_Table(I).max_requests = CHEST_REQUESTS;
+     Class_Table(I).alloc_size = size(chest);
+     Class_Table(I).pc_state_bytes = 3;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = true;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_chest_actions);
+     Class_Table(I).actions = class_chest_actions;
+
+     Class_Table(I).actions->a(HELP) = chest_HELP; /* 0 */
+     Class_Table(I).actions->a(1)              = illegal;               /* 1 */
+     Class_Table(I).actions->a(2)              = illegal;               /* 2 */
+     Class_Table(I).actions->a(3)              = illegal;               /* 3 */
+     Class_Table(I).actions->a(CLOSECONTAINER) = generic_CLOSECONTAINER;/* 4 */
+     Class_Table(I).actions->a(OPENCONTAINER)  = generic_OPENCONTAINER; /* 5 */
+
+end initialize_class_chest;
+
+chest_HELP: procedure;
+     declare 1 self based(selfptr) %include 'struct_chest';
+
+     call lock_HELP('Chest', self.key_hi * 256 + self.key_lo, self.open_flags);
+end chest_HELP;
+/*
+ *   class_club.pl1
+ *
+ *   Club object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ */
+
+initialize_class_club: procedure;
+
+     %replace CLUB_REQUESTS by 6;
+
+     declare a(0:CLUB_REQUESTS) entry based;
+     declare class_club_actions pointer;
+     declare 1 club based %include 'struct_club';
+
+     declare I bin(15) static initial(CLASS_CLUB);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = CLUB_REQUESTS;
+     Class_Table(I).alloc_size = size(club);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_club_actions);
+     Class_Table(I).actions = class_club_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)    = generic_GET;    /* 1 */
+     Class_Table(I).actions->a(PUT)    = generic_PUT;    /* 2 */
+     Class_Table(I).actions->a(3)      = illegal;        /* 3 */
+     Class_Table(I).actions->a(4)      = illegal;        /* 4 */
+     Class_Table(I).actions->a(ATTACK) = generic_ATTACK; /* 5 */
+     Class_Table(I).actions->a(6)   = illegal;   /* 6 */
+
+end initialize_class_club;
+/*
+ *   class_coke_machine.pl1
+ *
+ *   Object behavior module for class coke_machine.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   12-April-1986
+ *
+ */
+
+initialize_class_coke_machine: procedure;
+
+     %replace COKE_MACHINE_REQUESTS by 4;
+
+     declare a(0:COKE_MACHINE_REQUESTS) entry based;
+     declare class_coke_machine_actions pointer;
+     declare 1 coke_machine based %include 'struct_coke_machine';
+
+     declare I bin(15) static initial(CLASS_COKE_MACHINE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = COKE_MACHINE_REQUESTS;
+     Class_Table(I).alloc_size = size(coke_machine);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_coke_machine_actions);
+     Class_Table(I).actions = class_coke_machine_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(1)   = illegal;              /* 1 */
+     Class_Table(I).actions->a(2)   = illegal;              /* 2 */
+     Class_Table(I).actions->a(3)   = illegal;              /* 3 */
+     Class_Table(I).actions->a(PAY) = coke_machine_PAY;     /* 4 */
+
+end initialize_class_coke_machine;
+
+%replace COKE_COST by 3; /* A coke costs a nickel */
+
+coke_machine_PAY: procedure;
+     declare result binary(15);
+     declare 1 self based(selfptr) %include 'struct_coke_machine';
+
+     result = spend(COKE_COST);
+     if (result = SUCCESS) then do;
+/*        self.take = self.take + COKE_COST;
+          self.gen_flags(MODIFIED) = true;        removed 3/6/89  */
+          call n_msg_3(selfptr, PAY$, avatar.noid, COKE_COST, 0);
+          call n_msg_1(avatarptr, POSTURE$, OPERATE);
+     end; else
+          call object_say(NORM, self.noid, 'You don''t have enough money.  A Choke costs $' || ltrim(COKE_COST) || '.');
+     call r_msg_3(NORM, result, COKE_COST, 0);
+end coke_machine_PAY;
+/*
+ *   class_compass.pl1
+ *
+ *   Compass object behavior module for Habitat.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   27-April-1987
+ */
+
+initialize_class_compass: procedure;
+
+     %replace COMPASS_REQUESTS by 4;
+
+     declare a(0:COMPASS_REQUESTS) entry based;
+     declare class_compass_actions pointer;
+     declare 1 compass based %include 'struct_compass';
+
+     declare I bin(15) static initial(CLASS_COMPASS);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = COMPASS_REQUESTS;
+     Class_Table(I).alloc_size = size(compass);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_compass_actions);
+     Class_Table(I).actions = class_compass_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(DIRECT) = compass_DIRECT; /* 4 */
+
+end initialize_class_compass;
+
+compass_DIRECT: procedure;
+     declare 1 self based(selfptr) %include 'struct_compass';
+     declare response character(7) varying;
+
+     response = 'WEST: ';
+     if (self.gr_state = 0) then response = response || byte(124);
+     else if (self.gr_state = 1) then response = response || byte(126);
+     else if (self.gr_state = 2) then response = response || byte(125);
+     else if (self.gr_state = 3) then response = response || byte(127);
+     else response = response || '?';
+     call r_msg_s(NORM, response);
+end compass_DIRECT;
+/*
+ *   class_couch.pl1
+ *
+ *   Object behavior module for class couch.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ *
+ */
+
+initialize_class_couch: procedure;
+
+     %replace COUCH_REQUESTS by 0;
+
+     declare a(0:0) entry based;
+     declare 1 couch based %include 'struct_couch';
+     declare class_couch_actions pointer;
+
+     declare I bin(15) static initial(CLASS_COUCH);
+
+     Class_Table(I).capacity = 2;
+     Class_Table(I).max_requests = COUCH_REQUESTS;
+     Class_Table(I).alloc_size = size(couch);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_couch_actions);
+     Class_Table(I).actions = class_couch_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_couch;
+
+/*
+ *   class_crystal_ball.pl1
+ *
+ *   Object behavior module for class crystal_ball.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   12-April-1986
+ *
+ */
+
+initialize_class_crystal_ball: procedure;
+
+     %replace CRYSTAL_BALL_REQUESTS by 4;
+
+     declare a(0:CRYSTAL_BALL_REQUESTS) entry based;
+     declare class_crystal_ball_actions pointer;
+     declare 1 crystal_ball based %include 'struct_crystal_ball';
+
+     declare I bin(15) static initial(CLASS_CRYSTAL_BALL);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = CRYSTAL_BALL_REQUESTS;
+     Class_Table(I).alloc_size = size(crystal_ball);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_crystal_ball_actions);
+     Class_Table(I).actions = class_crystal_ball_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(ASK)   = generic_SPEAK; /* 4 */
+
+end initialize_class_crystal_ball;
+
+/*
+ *   class_die.pl1
+ *
+ *   Die object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ */
+
+initialize_class_die: procedure;
+
+     %replace DIE_REQUESTS by 4;
+
+     declare a(0:DIE_REQUESTS) entry based;
+     declare class_die_actions pointer;
+     declare 1 die based %include 'struct_die';
+
+     declare I bin(15) static initial(CLASS_DIE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = DIE_REQUESTS;
+     Class_Table(I).alloc_size = size(die);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_die_actions);
+     Class_Table(I).actions = class_die_actions;
+
+     Class_Table(I).actions->a(HELP)  = generic_HELP;  /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(ROLL)  = die_ROLL;      /* 4 */
+
+end initialize_class_die;
+
+die_ROLL: procedure;
+     self.gr_state = random(6);
+     self.gen_flags(MODIFIED) = true;
+     call n_msg_2(null(),PLAY_$,128+0,self.noid);
+     call n_msg_1(selfptr, ROLL$, self.gr_state);
+     call r_msg_1(NORM, self.gr_state);
+end;
+/*
+ *   class_display_case.pl1
+ *
+ *   Behavior module for object class display_case.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ */
+
+%replace DISPLAY_CASE_CAPACITY by 5;
+
+initialize_class_display_case: procedure;
+
+     %replace DISPLAY_CASE_REQUESTS by 5;
+
+     declare a(0:DISPLAY_CASE_REQUESTS) entry based;
+     declare class_display_case_actions pointer;
+     declare 1 display_case based %include 'struct_display_case';
+
+     declare I bin(15) static initial(CLASS_DISPLAY_CASE);
+
+     Class_Table(I).capacity = DISPLAY_CASE_CAPACITY;
+     Class_Table(I).max_requests = DISPLAY_CASE_REQUESTS;
+     Class_Table(I).alloc_size = size(display_case);
+     Class_Table(I).pc_state_bytes = 3;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_display_case_actions);
+     Class_Table(I).actions = class_display_case_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(1)              = illegal;               /* 1 */
+     Class_Table(I).actions->a(2)              = illegal;               /* 2 */
+     Class_Table(I).actions->a(3)              = illegal;               /* 3 */
+     Class_Table(I).actions->a(CLOSECONTAINER) = generic_CLOSECONTAINER;/* 4 */
+     Class_Table(I).actions->a(OPENCONTAINER)  = generic_OPENCONTAINER; /* 5 */
+
+end initialize_class_display_case;
+
+/*
+ *   class_drugs.pl1
+ *
+ *   Object behavior module for class drugs.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ *
+ */
+
+
+initialize_class_drugs: procedure;
+
+     %replace DRUGS_REQUESTS by 4;
+
+     declare a(0:DRUGS_REQUESTS) entry based;
+     declare class_drugs_actions pointer;
+     declare 1 drugs based %include 'struct_drugs';
+
+     declare I bin(15) static initial(CLASS_DRUGS);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = DRUGS_REQUESTS;
+     Class_Table(I).alloc_size = size(drugs);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_drugs_actions);
+     Class_Table(I).actions = class_drugs_actions;
+
+     Class_Table(I).actions->a(HELP)  = drugs_HELP;    /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(TAKE)  = drugs_TAKE;    /* 4 */
+
+end initialize_class_drugs;
+
+drugs_TAKE: procedure;
+     declare 1 self based(selfptr) %include 'struct_drugs';
+
+     if (self.effect < 1 | NUMBER_OF_DRUG_EFFECTS < self.effect) then
+          call trace_msg('drugs_TAKE: drug object ' || ltrim(self.obj_id) ||
+               'has illegal effect #' || ltrim(self.effect));
+     else if (holding(selfptr) & self.count > 0) then do;
+          self.count = self.count - 1;
+          self.gen_flags(MODIFIED) = true;
+          call n_msg_1(selfptr, TAKE$, avatar.noid);
+          call r_msg_1(S_PAC, SUCCESS);
+          if (self.count <= 0) then
+               call object_say(PAC, self.noid, 'All gone!');
+          call drug_effects(self.effect);
+          call end_packed_msg;
+          if (self.count <= 0) then
+               call destroy_object(self.noid);
+          return;
+     end;
+     call r_msg_1(NORM, FAILURE);
+end drugs_TAKE;
+
+initialize_drugs: procedure;
+     drug_effects(1) = heal_avatar;
+     drug_effects(2) = poison_avatar;
+     drug_effects(3) = turn_avatar_black;
+end initialize_drugs;
+
+heal_avatar: procedure;
+     avatar.health = 255;
+     avatar.gen_flags(MODIFIED) = true;
+     call object_say(PAC, avatar.noid, 'I feel much better now.');
+end heal_avatar;
+
+poison_avatar: procedure;
+     call object_say(PAC, avatar.noid, 'I feel very sick.');
+     call kill_avatar(avatarptr);
+end poison_avatar;
+
+turn_avatar_black: procedure;
+     declare head_noid binary(15);
+     declare headptr pointer;
+     declare 1 head based(headptr) %include 'struct_head';
+
+     call object_say(PAC, avatar.noid, 'I feel very odd.');
+     avatar.customize(1) = 17;
+     avatar.customize(2) = 17;
+     avatar.gen_flags(MODIFIED) = true;
+     call b_msg_5(null(), FIDDLE_$, avatar.noid, C64_customize_offset, 2,
+          17, 17);
+     head_noid = avatar.contents->element(HEAD);
+     if (head_noid ^= NULL) then do;
+          headptr = ObjList(head_noid);
+          head.gen_flags(MODIFIED) = true;
+          head.orientation = and_bit(head.orientation, '10000111'b);
+          head.orientation =  or_bit(head.orientation, '00001000'b);
+          call b_msg_4(null(), FIDDLE_$, head_noid, C64_orient_offset, 1,
+               head.orientation);
+     end;
+end turn_avatar_black;
+
+drugs_vendo_info: procedure(drugsptr) returns(character(114) varying);
+     declare drugsptr pointer;
+     declare 1 drugs based(drugsptr) %include 'struct_drugs';
+
+     if (drugs.effect < 1) then
+          return('Illegal drugs.');
+     else if (drugs.effect > NUMBER_OF_DRUG_EFFECTS) then
+          return('DRUGS, no information available (yet).');
+     else
+          return(drug_help(drugs.effect));
+end drugs_vendo_info;
+
+drugs_HELP: procedure;
+     declare 1 self based(selfptr) %include 'struct_drugs';
+
+     if (self.effect < 1 | self.effect > NUMBER_OF_DRUG_EFFECTS) then
+          call r_msg_s(NORM, 'Illegible Latin scrawl.');
+     else do;
+          call r_msg_s(S_PAC, 'DRUGS: select DO to consume.  This pill bottle has '
+               || ltrim(self.count) || ' pills remaining.  This bottle contains:');
+          call object_say(E_PAC, self.noid, drug_help(self.effect));
+     end;
+end drugs_HELP;
+/*
+ *   class_fake_gun.pl1
+ *
+ *   Object behavior module for class fake_gun.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ *
+ */
+
+initialize_class_fake_gun: procedure;
+
+     %replace FAKE_GUN_REQUESTS by 5;
+
+     declare a(0:FAKE_GUN_REQUESTS) entry based;
+     declare class_fake_gun_actions pointer;
+     declare 1 fake_gun based %include 'struct_fake_gun';
+
+     declare I bin(15) static initial(CLASS_FAKE_GUN);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = FAKE_GUN_REQUESTS;
+     Class_Table(I).alloc_size = size(fake_gun);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_fake_gun_actions);
+     Class_Table(I).actions = class_fake_gun_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)       = generic_GET;        /* 1 */
+     Class_Table(I).actions->a(PUT)       = generic_PUT;        /* 2 */
+     Class_Table(I).actions->a(THROW)     = generic_THROW;      /* 3 */
+     Class_Table(I).actions->a(FAKESHOOT) = fake_gun_FAKESHOOT; /* 4 */
+     Class_Table(I).actions->a(RESET)     = fake_gun_RESET;     /* 5 */
+
+end initialize_class_fake_gun;
+
+%replace FAKE_GUN_READY by 0;
+%replace FAKE_GUN_FIRED by 1;
+
+fake_gun_FAKESHOOT: procedure;
+     declare 1 self based(selfptr) %include 'struct_fake_gun';
+     declare result binary(15);
+
+     if (holding(selfptr) & self.state = FAKE_GUN_READY) then do;
+          self.state = FAKE_GUN_FIRED;
+          self.gr_state = FAKE_GUN_FIRED;
+          self.gen_flags(MODIFIED) = true;
+          call n_msg_0(selfptr, FAKESHOOT$);
+          result = SUCCESS;
+     end; else
+          result = FAILURE;
+     call r_msg_1(NORM, result);
+end fake_gun_FAKESHOOT;
+
+fake_gun_RESET: procedure;
+     declare 1 self based(selfptr) %include 'struct_fake_gun';
+     declare result binary(15);
+
+     if (holding(selfptr) & self.state = FAKE_GUN_FIRED) then do;
+          self.state = FAKE_GUN_READY;
+          self.gr_state = FAKE_GUN_READY;
+          self.gen_flags(MODIFIED) = true;
+          call n_msg_0(selfptr, RESET$);
+          result = SUCCESS;
+     end; else
+          result = FAILURE;
+     call r_msg_1(NORM, result);
+end fake_gun_RESET;
+/*
+ *   class_fence.pl1
+ *
+ *   Fence object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ */
+
+initialize_class_fence: procedure;
+     declare a(0:0) entry based;
+     declare 1 fence based %include 'struct_fence';
+     declare class_fence_actions pointer;
+
+     %replace FENCE_REQUESTS by 0;
+
+     declare I bin(15) static initial(CLASS_FENCE);
+
+     Class_Table(I).capacity = 0;
+     allocate a set(class_fence_actions);
+     Class_Table(I).actions = class_fence_actions;
+     Class_Table(I).max_requests = FENCE_REQUESTS;
+     Class_Table(I).alloc_size = size(fence);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP;
+end initialize_class_fence;
+
+/*
+ *   class_flag.pl1
+ *
+ *   Flag object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   9-April-1986
+ */
+
+initialize_class_flag: procedure;
+
+     %replace FLAG_REQUESTS by 3;
+
+     declare a(0:FLAG_REQUESTS) entry based;
+     declare class_flag_actions pointer;
+     declare 1 flag based %include 'struct_flag';
+
+     declare I bin(15) static initial(CLASS_FLAG);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = FLAG_REQUESTS;
+     Class_Table(I).alloc_size = size(flag);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_flag_actions);
+     Class_Table(I).actions = class_flag_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+
+end initialize_class_flag;
+
+/*
+ *   class_flat.pl1
+ *
+ *   Flat object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   9-August-1986
+ */
+
+initialize_class_flat: procedure;
+
+     declare a(0:0) entry based;
+     declare 1 flat based %include 'struct_flat';
+     declare class_flat_actions pointer;
+
+     %replace FLAT_REQUESTS by 0;
+
+     declare I bin(15) static initial(CLASS_FLAT);
+
+     Class_Table(I).capacity = 0;
+     allocate a set(class_flat_actions);
+     Class_Table(I).actions = class_flat_actions;
+     Class_Table(I).max_requests = FLAT_REQUESTS;
+     Class_Table(I).alloc_size = size(flat);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     Class_Table(I).actions->a(HELP) = ground_HELP;
+end initialize_class_flat;
+
+/*
+ *   class_fortune_machine.pl1
+ *
+ *   Object behavior module for class fortune_machine.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   12-April-1986
+ *
+ */
+
+initialize_class_fortune_machine: procedure;
+
+     %replace FORTUNE_MACHINE_REQUESTS by 4;
+
+     declare a(0:FORTUNE_MACHINE_REQUESTS) entry based;
+     declare class_fortune_machine_actions pointer;
+     declare 1 fortune_machine based %include 'struct_fortune_machine';
+
+     declare I bin(15) static initial(CLASS_FORTUNE_MACHINE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = FORTUNE_MACHINE_REQUESTS;
+     Class_Table(I).alloc_size = size(fortune_machine);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_fortune_machine_actions);
+     Class_Table(I).actions = class_fortune_machine_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(1)   = illegal;              /* 1 */
+     Class_Table(I).actions->a(2)   = illegal;              /* 2 */
+     Class_Table(I).actions->a(3)   = illegal;              /* 3 */
+     Class_Table(I).actions->a(PAY) = fortune_machine_PAY;  /* 4 */
+
+end initialize_class_fortune_machine;
+
+%replace FORTUNE_COST by 1; /* A fortune costs one token */
+%replace LAST_MSG by 68;
+
+fortune_machine_PAY: procedure;
+     declare result binary(15);
+     declare 1 self based(selfptr) %include 'struct_fortune_machine';
+     declare text character(TEXT_LENGTH) varying;
+     declare significant_messages(0:LAST_MSG) char(114) var static init(
+'* You might have mail in your pocket *',
+'You will receive mail today.',
+'Someone needs your help.',
+'Have a Choke and a Smile.',
+'Never give a sucker an even break.',
+'You should consult the island''s mystic, Tahiba.',
+'It is rumored that there is buried treasure on Dnalsi Island.',
+'Watch out for the curse of the Smiley Face!!',
+'You will meet a very INTERESTING stranger at the beach.',
+'Don''t use the ''Ports today.  They are on the blink.',
+'There are rumors of buried treasure in Club Caribe''s caves.',
+'There has been a run on the banks.  Better keep all of your cash on hand.',
+'Be sure to try Club Caribe''s native drinks.  Very refreshing!',
+'There is special meaning for you in the letters: T, A and D.',
+'Orange, Lemon, Bar.  You lose.',
+'Lemon, Lemon, Cherry.  You lose.',
+'Bar, Bar, Cherry.  You lose.',
+'Bar, Orange, Cherry.  You lose.',
+'Something interesting that way ->',
+'<- Something interesting that way',
+'Someone is watching you. Be careful what you do.',
+'Be sure to use sun screen if you go to the Nude Beach.',
+'Do not go to the Light House after dark.',
+'You have a secret admirer.',
+'Be careful today.  You may be robbed.',
+'You are industrious, creative and good looking.  Tell someone about it.',
+'You should have a sex change right away.  It will give you a new outlook on life.',
+'Your lucky number is 42.',
+'Sorry, out of order.  Try again tomorrow.',
+'You are wise, compassionate and kind.',
+'Use ESP to contact a friend.  You''ll be glad you did.',
+'Your pocket has a hole in it!',
+'Visitors to Club Caribe always come back for another visit.',
+'Fatal error trap.  Beep Beep Beep!  Woopa Woopa!  What in blazes did you do?',
+'You will be successful in your next adventure.',
+'Your best friend has more $ than you do.',
+'Magic is the key to success.',
+'Open your own business.  You could turn a profit.',
+'Tonight is your lucky night!',
+'You are due for some bad luck.  Be VERY careful.',
+'Robbery is a real problem.  Be sure to lock everything up tight.',
+'The pawn shop is paying good $ for that stuff you''ve been trying to dump.',
+'Uijt tfdsfu nfttbhf jt jm dpef.',
+'You need a new head.',
+'Everyone is out to get you.',
+'See the world!  Travel to another city.',
+'You will soon be a great sex symbol.',
+'You will soon be VERY popular.',
+'Feed Me!  More Coins!  More Coins!',
+'Coin detected in hand.  Please insert coin.',
+'Change your body color.',
+'I don''t care what other people say.  You are attractive the way you are.',
+'You will lose your life soon.',
+'Scare a friend.  Walk around without your head.',
+'There is a plot to kill the current leader.  You must prevent it!',
+'Clue #47: The bird flies from the east.  Your arms fall off.',
+'Have you ever noticed that you can never open the windows?',
+'The mail system is getting overloaded.  Institute mail rationing.',
+'Beware of the INSECT PLAGUE.',
+'Visit RabbitJack''s Casino.  It''s great!',
+'Someone has something important for you.',
+'Someone is looking for you.',
+'True love is on the horizon.',
+'You look sick.  Better take a pill.',
+'Good fortune is headed your way.',
+'Bad luck is headed your way.',
+'All is discovered.  Flee while you can.',
+'Your ship is about to come in.',
+'great idea for a fortune message'
+     );
+
+     result = spend(FORTUNE_COST);
+     if (result = SUCCESS) then do;
+          text = significant_messages(random(LAST_MSG));
+          call n_msg_3(selfptr, PAY$, avatar.noid, FORTUNE_COST, 0);
+          call n_msg_2(null(),PLAY_$,128+6,self.noid);
+          call n_msg_1_s(null(), OBJECTSPEAK_$, self.noid, text);
+/*        self.take = self.take + FORTUNE_COST;
+          self.gen_flags(MODIFIED) = true;   removed 3/6/89 */
+     end; else
+          text = 'You don''t have enough money.  Fortunes cost $' || ltrim(FORTUNE_COST) || '.';
+     call r_msg_3_s(NORM, result, FORTUNE_COST, 0, text);
+
+end fortune_machine_PAY;
+
+/*
+ *   class_game_piece.pl1
+ *
+ *   Game piece object behavior module for Habitat(TM).
+ *
+ *   Chip Morningstar & Aric Wilmunder
+ *   Lucasfilm Ltd.
+ *   17-December-1986
+ */
+
+initialize_class_game_piece: procedure;
+
+     %replace GAME_PIECE_REQUESTS by 4;
+
+     declare a(0:GAME_PIECE_REQUESTS) entry based;
+     declare class_game_piece_actions pointer;
+     declare 1 game_piece based %include 'struct_game_piece';
+
+     declare I bin(15) static initial(CLASS_GAME_PIECE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = GAME_PIECE_REQUESTS;
+     Class_Table(I).alloc_size = size(game_piece);
+     Class_Table(I).pc_state_bytes = 0;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_game_piece_actions);
+     Class_Table(I).actions = class_game_piece_actions;
+
+     Class_Table(I).actions->a(HELP) = game_piece_HELP; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;    /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(ROLL) = game_piece_CHANGE; /* 4 */
+
+end initialize_class_game_piece;
+
+game_piece_CHANGE: procedure;
+     %replace CHECKER_PIECE by 6;
+     %replace CHECKER_KING by 7;
+
+     if (self.gr_state = CHECKER_PIECE) then 
+          self.gr_state = CHECKER_KING;
+     else if (self.gr_state = CHECKER_KING) then
+          self.gr_state = CHECKER_PIECE;
+     self.gen_flags(MODIFIED) = true;
+     call n_msg_1(selfptr, ROLL$, self.gr_state);
+     call r_msg_1(NORM, self.gr_state);
+end game_piece_CHANGE;
+
+game_piece_HELP: procedure;
+     declare msg character(114) varying;
+     declare 1 self based(selfptr) %include 'struct_game_piece';
+
+     msg = 'Game piece: GET brings it to you. DO the board to throw piece to desired spot.';
+     if (self.gr_state = CHECKER_PIECE) then
+          msg = msg || ' DO the piece itself to "king" it.';
+     else if (self.gr_state = CHECKER_KING) then
+          msg = msg || ' DO the piece itself to "unking" it.';
+     call r_msg_s(NORM, msg);
+end game_piece_HELP;
+/*
+ *   class_garbage_can.pl1
+ *
+ *   Behavior module for object class garbage_can.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ */
+
+%replace GARBAGE_CAN_CAPACITY by 20;
+
+initialize_class_garbage_can: procedure;
+
+     %replace GARBAGE_CAN_REQUESTS by 6;
+
+     declare a(0:GARBAGE_CAN_REQUESTS) entry based;
+     declare class_garbage_can_actions pointer;
+     declare 1 garbage_can based %include 'struct_garbage_can';
+
+     declare I bin(15) static initial(CLASS_GARBAGE_CAN);
+
+     Class_Table(I).capacity = GARBAGE_CAN_CAPACITY;
+     Class_Table(I).max_requests = GARBAGE_CAN_REQUESTS;
+     Class_Table(I).alloc_size = size(garbage_can);
+     Class_Table(I).pc_state_bytes = 3;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = true;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_garbage_can_actions);
+     Class_Table(I).actions = class_garbage_can_actions;
+
+     Class_Table(I).actions->a(HELP) = generic_HELP; /* 0 */
+     Class_Table(I).actions->a(1)     = illegal;           /* 1 */
+     Class_Table(I).actions->a(2)     = illegal;           /* 2 */
+     Class_Table(I).actions->a(3)     = illegal;           /* 3 */
+     Class_Table(I).actions->a(4)     = illegal;           /* 4 */
+     Class_Table(I).actions->a(5)     = illegal;           /* 5 */
+     Class_Table(I).actions->a(FLUSH) = garbage_can_FLUSH; /* 6 */
+
+end initialize_class_garbage_can;
+
+garbage_can_FLUSH: procedure;
+     call destroy_contents(selfptr);
+     call n_msg_0(selfptr, FLUSH$);
+     call r_msg_1(NORM, SUCCESS);
+end garbage_can_FLUSH;
+/*
+ *   obj_gemstone.pl1
+ *
+ *   Gemstone object behavior module for MicroCosm(TM).
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   11-April-1986
+ */
+
+initialize_class_gemstone: procedure;
+
+%replace GEMSTONE_REQUESTS by 4;
+
+     declare a(0:GEMSTONE_REQUESTS) entry based;
+     declare class_gemstone_actions pointer;
+     declare 1 gemstone based %include 'struct_gemstone';
+
+     declare I bin(15) static initial(CLASS_GEMSTONE);
+
+     Class_Table(I).capacity = 0;
+     Class_Table(I).max_requests = GEMSTONE_REQUESTS;
+     Class_Table(I).alloc_size = size(gemstone);
+     Class_Table(I).pc_state_bytes = 1;
+     Class_Table(I).known = true;
+     Class_Table(I).opaque_container = false;
+     Class_Table(I).filler = false;
+
+     allocate a set(class_gemstone_actions);
+     Class_Table(I).actions = class_gemstone_actions;
+
+     Class_Table(I).actions->a(HELP)  = generic_HELP_MAGIC; /* 0 */
+     Class_Table(I).actions->a(GET)   = generic_GET;   /* 1 */
+     Class_Table(I).actions->a(PUT)   = generic_PUT;   /* 2 */
+     Class_Table(I).actions->a(THROW) = generic_THROW; /* 3 */
+     Class_Table(I).actions->a(MAGIC) = generic_MAGIC; /* 4 */
+
+end initialize_class_gemstone;

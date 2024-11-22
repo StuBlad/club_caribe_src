@@ -1,0 +1,33 @@
+/*  From capacity_monitor.pl1:          */
+
+declare note_object_deletion    entry (bin(15), bin(15));
+declare note_object_creation    entry (bin(15), bin(15));
+declare note_instance_deletion  entry (bin(15), bin(15));
+declare note_instance_creation  entry (bin(15), bin(15));
+declare mem_checks_ok           entry (bin(15)) returns (bit(1) aligned);
+
+
+
+/*  From curses.pl1:                    */
+
+declare activate_head_curse   entry (pointer, bin(15)) returns(bit(1) aligned);
+declare curse_touch           entry (pointer, pointer);
+
+
+/*  From width.pl1:                     */
+
+declare adjacent              entry (pointer) returns (bit(1) aligned);
+declare check_path            entry (bin(15), bin(15), bin(15), bin(15),
+                                     bin(15), bit(1) aligned);
+declare elsewhere             entry (pointer) returns(bit(1) aligned);
+declare here                  entry (pointer) returns(bit(1) aligned);
+
+
+/*  From bits.pl1:                      */
+
+declare clear_bit             entry (bin(15), bin(15));
+declare set_bit               entry (bin(15), bin(15));
+declare test_bit              entry (bin(15), bin(15)) returns(bit(1) aligned);
+declare or_bit                entry (bin(15), bin(15)) returns(bin(15));
+declare and_bit               entry (bin(15), bin(15)) returns(bin(15));
+

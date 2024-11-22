@@ -1,0 +1,29 @@
+/*
+ *   cc_actions_ext.incl.pl1
+ *
+ *   Entry declarations for generic action behavior functions.
+ *
+ *   Chip Morningstar
+ *   Lucasfilm Ltd.
+ *   10-April-1986
+ *
+ */
+
+declare generic_ATTACK         entry;
+declare generic_CLOSE          entry;
+declare generic_CLOSECONTAINER entry;
+declare generic_GET            entry;
+declare generic_HELP           entry;
+declare generic_HELP_MAGIC     entry;
+declare generic_MAGIC          entry;
+declare generic_OFF            entry;
+declare generic_ON             entry;
+declare generic_OPEN           entry;
+declare generic_OPENCONTAINER  entry;
+declare generic_PUT            entry;
+declare generic_READMAIL       entry;
+declare generic_SENDMAIL       entry;
+declare generic_SPEAK          entry;
+declare generic_THROW          entry;
+declare illegal                entry;
+declare lock_HELP              entry (char(*) var, bin(31), bin(15));
