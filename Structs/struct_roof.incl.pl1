@@ -12,3 +12,4 @@
      2    class_specific      ,
            3   base           binary(15),
            3   pattern        binary(15);
+

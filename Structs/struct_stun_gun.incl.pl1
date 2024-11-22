@@ -8,5 +8,6 @@
  *   30-July-1986
  *
  */
-,    2    common_head         like instance_head
- ; /* terminates struct header from include file */
+,    2    common_head         like instance_head,
+     2    power               binary (15);
+

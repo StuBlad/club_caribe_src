@@ -12,3 +12,4 @@
      2    class_specific      ,
            3   key_number_lo  binary(15),
            3   key_number_hi  binary(15);
+

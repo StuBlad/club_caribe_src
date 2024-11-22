@@ -1,7 +1,7 @@
 /*
- *   struct_gen_player.incl.pl1
+ *   struct_instant_object.incl.pl1
  *
- *   Struct stub for generic music player object instance descriptor.
+ *   Struct stub for instant_object instance descriptor.
  *
  *   Chip Morningstar
  *   Lucasfilm Ltd.
@@ -10,5 +10,4 @@
  */
 ,    2    common_head         like instance_head,
      2    class_specific      ,
-           3   on             binary(15);
-
+           3   instant_what   binary(15);

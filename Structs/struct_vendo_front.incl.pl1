@@ -19,3 +19,4 @@
 /* Internal use below here */
            3   prices(0:9)    binary(15),
            3   take           binary(31);
+

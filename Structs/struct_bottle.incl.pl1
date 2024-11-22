@@ -11,3 +11,4 @@
 ,    2    common_head         like instance_head,
      2    class_specific      ,
            3   filled         binary(15);
+

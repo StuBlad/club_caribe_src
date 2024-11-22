@@ -31,4 +31,5 @@
           3    new_session         bit(1),
           3    ck_last_login       bit(1),
           3    send_mail           bit(1),
-          3    filler              bit(9);
+          3    gagged              bit(1),
+          3    filler              bit(8);

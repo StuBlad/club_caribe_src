@@ -12,3 +12,4 @@
      2    class_specific      ,
            3   width          binary(15),
            3   height         binary(15);
+
