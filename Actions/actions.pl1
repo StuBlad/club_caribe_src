@@ -4,15 +4,851 @@
  *   9-April-1986
  */
 
-%include 'microcosm.incl.pl1';
-%include 'defs_helper.incl.pl1';
+%nolist; %include 'cc_sys_defs.incl.pl1';         %list;
+%nolist; %include 'cc_sys_strux.incl.pl1';        %list;
+%nolist; %include 'cc_message_defs.incl.pl1';     %list;
+%nolist; %include 'cc_messages_dcls.incl.pl1';    %list;
+%nolist; %include 'cc_regionproc_dcls.incl.pl1';  %list;
+%nolist; %include 'cc_helpers_dcls.incl.pl1';     %list;
+%nolist; %include 'cc_misc_dcls.incl.pl1';        %list;
+%nolist; %include 'cc_class_defs.incl.pl1';       %list;
 
-%include 'Actions>actions_container.incl.pl1';
-%include 'Actions>actions_door.incl.pl1';
-%include 'Actions>actions_gpt.incl.pl1';
-%include 'Actions>actions_mail.incl.pl1';
-%include 'Actions>actions_music.incl.pl1';
-%include 'Actions>actions_oracle.incl.pl1';
-%include 'Actions>actions_switch.incl.pl1';
-%include 'Actions>actions_help.incl.pl1';
-%include 'Actions>actions_weapon.incl.pl1';
+%page;
+generic_CLOSECONTAINER: procedure;
+     declare result binary(15);
+     declare have_key bit(1);
+     declare 1 key based %include 'struct_key';
+     declare 1 self based(selfptr) %include 'struct_gen_container';
+
+     have_key = (holding_class(CLASS_KEY) &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_hi = self.key_hi &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_lo = self.key_lo);
+     if (/*^elsewhere(selfptr) &*/ test_bit(self.open_flags, OPEN_BIT)) then do;
+          call clear_bit(self.open_flags, OPEN_BIT);
+          self.gr_state = 0;
+          if (have_key) then
+               call clear_bit(self.open_flags, UNLOCKED_BIT);
+          else
+               call set_bit(self.open_flags, UNLOCKED_BIT);
+          call n_msg_2(avatarptr, CLOSECONTAINER$, self.noid, self.open_flags);
+          call close_container(self.noid);
+          self.gen_flags(MODIFIED) = true;
+          result = SUCCESS;
+     end; else
+          call r_msg_1(NORM, FAILURE);
+/*          result = FAILURE;
+     call r_msg_1(NORM, result);*/
+end generic_CLOSECONTAINER;
+
+generic_OPENCONTAINER: procedure;
+     declare have_key bit(1);
+     declare 1 self based(selfptr) %include 'struct_gen_container';
+     declare 1 key based %include 'struct_key';
+
+     have_key = (holding_class(CLASS_KEY) &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_hi = self.key_hi &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_lo = self.key_lo);
+     if (/*^elsewhere(selfptr) &*/ ^test_bit(self.open_flags, OPEN_BIT) &
+               (have_key | test_bit(self.open_flags, UNLOCKED_BIT)) &
+               self.container = THE_REGION) then
+          call get_container_contents(self.noid);
+     else do;
+          call object_say(S_PAC, self.noid, 'It is locked.');
+          call r_msg_1_s(E_PAC, FAILURE, '');
+     end;
+end generic_OPENCONTAINER;
+
+generic_SET_OPEN_BITS: procedure;
+     declare 1 self based(selfptr) %include 'struct_gen_container';
+
+          call set_bit(self.open_flags, OPEN_BIT);
+          call set_bit(self.open_flags, UNLOCKED_BIT);
+          self.gr_state = 1;
+          self.gen_flags(MODIFIED) = true;
+
+end generic_SET_OPEN_BITS;
+
+lock_HELP: procedure(item_name, key_number, open_flags);
+     declare item_name character(*) varying;
+     declare key_number binary(31);
+     declare open_flags binary(15);
+     declare msg character(114) varying;
+
+     msg = item_name || ': DO while standing next to it to open, close (it is ';
+     if (test_bit(open_flags, OPEN_BIT)) then
+          msg = msg || 'open now).';
+     else
+          msg = msg || 'closed now).';
+     if (key_number ^= 0) then do;
+          msg = msg || '  Uses key #' || ltrim(key_number);
+          if (test_bit(open_flags, UNLOCKED_BIT)) then
+               msg = msg || ' but is currently unlocked.';
+          else
+               msg = msg || ' and is currently locked.';
+     end;
+     call r_msg_s(NORM, msg);
+end lock_HELP;
+%page;
+/* actions_door:                                            */
+
+generic_CLOSE: procedure;
+     declare result binary(15);
+     declare have_key bit(1);
+     declare 1 key based %include 'struct_key';
+     declare 1 self based(selfptr) %include 'struct_gen_door';
+
+     have_key = (holding_class(CLASS_KEY) &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_hi = self.key_hi &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_lo = self.key_lo);
+     if (/*^elsewhere(selfptr) &*/ test_bit(self.open_flags, OPEN_BIT)) then do;
+          call clear_bit(self.open_flags, OPEN_BIT);
+          self.gr_state = 0;
+          if (have_key) then
+               call clear_bit(self.open_flags, UNLOCKED_BIT);
+/*        else
+               call set_bit(self.open_flags, UNLOCKED_BIT) 2-2-88 FRF */
+          call n_msg_2(avatarptr, CLOSE$, self.noid, self.open_flags);
+          self.gen_flags(MODIFIED) = true;
+          result = SUCCESS;
+     end; else
+          result = FAILURE;
+     call r_msg_1(NORM, result);
+end generic_CLOSE;
+
+generic_OPEN: procedure;
+     declare have_key bit(1);
+     declare result binary(15);
+     declare 1 self based(selfptr) %include 'struct_gen_door';
+     declare 1 key based %include 'struct_key';
+     declare msg_type bin(15);
+
+     have_key = (holding_class(CLASS_KEY) &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_hi = self.key_hi &
+          ObjList(avatar.contents->element(HANDS))->key.key_number_lo = self.key_lo);
+     if (/*^elsewhere(selfptr) &*/ ^test_bit(self.open_flags, OPEN_BIT) &
+               (have_key | test_bit(self.open_flags, UNLOCKED_BIT))) then do;
+          call set_bit(self.open_flags, OPEN_BIT);
+          call set_bit(self.open_flags, UNLOCKED_BIT);
+          self.gr_state = 1;
+          self.gen_flags(MODIFIED) = true;
+          result = SUCCESS;
+          call n_msg_1(avatarptr, OPEN$, self.noid);
+          msg_type = NORM;
+     end; else do;
+          result = FAILURE;
+          call object_say(S_PAC, self.noid, 'It is locked.');
+          msg_type = E_PAC;
+     end;
+     call r_msg_1(msg_type, result);
+end generic_OPEN;
+%page;
+/* actions_gpt:                                             */
+
+%replace HEAD_GROUND_STATE by 2;
+%replace GROUND_FLAT by 2;
+
+generic_GET: procedure;
+     declare how binary(15);
+     declare 1 self based(selfptr) %include 'struct_gen_switch';
+     declare 1 scont based(selfptr) %include 'struct_gen_container';
+     declare 1 cont based(contptr) %include 'struct_gen_container';
+     declare 1 dcont based(contptr) %include 'struct_display_case';
+     declare i binary(15);
+     declare avatar_userid binary(31);
+     declare original_position binary(15);
+     declare contptr pointer;
+     declare msg_type binary(15);
+
+     %replace FROM_POCKET by 1;
+     %replace FROM_GROUND by 0;
+
+     contptr = ObjList(self.container);
+
+     /* Various ways GET can fail:
+          the Avatar is already holding something OR
+          the object is not getable  OR
+          the object is not accessable OR
+          the object is an open container OR
+          the object is in glue or some other permanent container OR
+          the object is in another Avatar's pockets OR
+          the object is in another Avatar's hands and can't be grabbed OR
+          the Avatar holding the object is offline OR
+          the object is in a display case and belongs to the case's owner OR
+          there's just not enough room here to hold the object!
+
+        Since PL/1 lacks McCarthy evaluation of conditional expressions, these
+          conditions result in a huge number of nested if statements.
+          Consequently, we are using (*shudder*) goto's here to make the code
+          simpler!
+     */
+     msg_type = NORM;
+     if (^empty_handed(avatarptr) |
+               ^getable(selfptr) |
+               (^accessable(selfptr) & self.class ^= CLASS_GAME_PIECE) |
+          /*   cont.class = CLASS_BUREAUCRAT |    */
+               cont.class = CLASS_VENDO_FRONT |
+               cont.class = CLASS_VENDO_INSIDE |
+               cont.class = CLASS_GLUE) then
+          goto getFAIL;
+     if (self.class = CLASS_BOX | self.class = CLASS_BAG) then
+          if (test_bit(scont.open_flags, OPEN_BIT)) then
+               goto getFAIL;
+     if ((self.position ^= HANDS | ^grabable(selfptr)) &
+               cont.class = CLASS_AVATAR &
+               cont.noid ^= avatar.noid) then
+          goto getFAIL;
+     if (cont.class = CLASS_AVATAR) then
+          if (^UserList(cont.avatarslot)->player.online) then goto getFAIL;
+     avatar_userid = UserList(avatar.avatarslot)->player.U_Id;
+     if (cont.class = CLASS_DISPLAY_CASE) then do;
+          if (dcont.locked(self.position+1)&dcont.owner^=avatar_userid) then do;
+               call object_say(S_PAC, dcont.noid, 
+                    'You are not the shopkeeper.  You cannot pick this item up.');
+               goto getFAILend;
+          end;
+     end;
+
+     /* Where object is gotten from determines the choreography required */
+     if (self.container = avatar.noid)
+          then how = FROM_POCKET;
+          else how = FROM_GROUND;
+
+     original_position = self.position + 1;
+     if (^change_containers(self.noid, avatar.noid, HANDS, true)) then
+          goto getFAIL;
+
+     /* If getting a switched on flashlight from an opaque container, turn up
+        the lights. */
+     if (self.class = CLASS_FLASHLIGHT) then do;
+          if (self.on = SUCCESS) then do;
+               if (container_is_opaque(cont.class, self.y)) then do;
+                    current_region.lighting = current_region.lighting+1;
+                    call b_msg_1(null(), CHANGELIGHT_$, 1);
+               end;
+          end;
+     end;
+
+     /* If Tome Of Wealth And Fame, Notify Sysop
+     if (self.obj_id=14610) 
+          then call message_to_god(selfptr,avatarptr,'Tome Recovered!');  */
+
+     /* If getting a compass, match its orientation to the current region */
+     if (self.class = CLASS_COMPASS) then do;
+          self.gr_state = current_region.orientation;
+          call b_msg_4(null(), FIDDLE_$, self.noid, C64_gr_state_offset,
+               1, self.gr_state);
+     end;
+
+     /* At this point, we succeed in getting the object */
+     call r_msg_1(NORM, SUCCESS);
+     call n_msg_2(avatarptr, GET$, self.noid, how);
+     return;
+
+     /* General error exit */
+getFAILend:
+     msg_type = E_PAC;
+getFAIL:
+     call r_msg_1(msg_type, FAILURE);
+end generic_GET;
+
+generic_PUT: procedure;
+     declare container_id binary(15);
+     declare pos_x binary(15);
+     declare pos_y binary(15);
+     declare obj_orient binary(15);
+     declare obj_noid binary(15);
+     declare 1 obj based(objptr) %include 'struct_tokens';
+     declare objptr pointer;
+     declare tvalue binary(31);
+     declare 1 self based(selfptr) %include 'struct_gen_switch';
+     declare 1 selft based(selfptr) %include 'struct_tokens';
+     declare 1 selfp based(selfptr) %include 'struct_paper';
+     declare 1 selfc based(selfptr) %include 'struct_gen_container';
+     declare going_away_flag bit(1);
+     declare 1 cont based(contptr) %include 'struct_gen_container';
+     declare 1 dcont based(contptr) %include 'struct_display_case';
+     declare contptr pointer;
+     declare how binary(15);
+     declare i binary(15);
+     declare j binary(15);
+     declare token_at binary(15);
+     declare avatar_userid binary(31);
+     declare msg_type binary(15);
+
+     %replace TO_AVATAR by 1;
+     %replace TO_GROUND by 0;
+
+     container_id = rank(request(FIRST));
+     pos_x = rank(request(SECOND));
+     pos_y = rank(request(THIRD));
+     obj_orient = rank(request(FOURTH));
+     msg_type = NORM;
+
+     /* Various ways PUT can fail:
+          the container noid specified by the C64 is invalid OR
+          it's trying to put down a magic lamp in the genie state OR
+          the Avatar is not holding the object OR
+          the target location is not available (already occupied) OR
+          it's putting a restricted object into a non-restricted container OR
+          it's trying to put a flag into a container (not allowed) OR
+          the call to change_containers fails because there is not enough room
+               (this should never happen, since the object is already out, but
+               we check just in case)
+
+       As above, we use (*eccchhhhh*) goto's to simplify.
+     */
+     contptr = ObjList(container_id);
+     avatar_userid = UserList(avatar.avatarslot)->player.U_Id;
+     if (contptr = null()) then
+          goto putFAIL;
+     if (^holding(selfptr)) then
+          goto putFAIL;
+
+/*   IF WE WANT TO DISALLOW THE NESTING OF BAGS/BOXES, USE THIS:
+     if ((self.class = CLASS_BOX | self.class = CLASS_BAG) & 
+         (cont.class = CLASS_BOX | cont.class = CLASS_BAG)) then goto putFAIL;
+*/
+     if (Class_Table(selfc.class).capacity > 0) then
+        if (test_bit(selfc.open_flags,OPEN_BIT)) then do;
+             call trace_msg ('PUT WHILE OPEN: '   || ltrim(avatar_userid) ||
+                          ' attempted to put ' || ltrim(selfc.obj_id)  ||
+                          ' into containter '  || ltrim(cont.obj_id));
+             goto putFAIL;
+             end;
+
+     if (cont.noid ^= THE_REGION) then do;
+          if (cont.class ^= CLASS_AVATAR & ^test_bit(cont.open_flags,1)) then goto putFAIL;
+          pos_y = -1 ;
+          token_at = -1 ;
+          j = Class_Table(cont.class).capacity-1;
+          if (cont.class = CLASS_AVATAR) then j = j - 3;
+          do i=0 to j;
+               obj_noid = cont.contents->element(i);
+               if (obj_noid = NULL) then do;
+                    if (pos_y = -1) then pos_y = i;
+               end; else do;
+                    objptr = ObjList(obj_noid);
+                    if (obj.class = CLASS_TOKENS) then do;
+                         token_at = i;
+                    end;
+               end;
+          end;
+          if (self.class = CLASS_TOKENS & token_at ^= -1) then do;
+               pos_y = token_at;
+               objptr = ObjList(cont.contents->element(pos_y));
+               tvalue = tget(selfptr) + tget(objptr);
+               if (tvalue > 65536) then goto putFAIL;
+               call tset(selfptr, tvalue);
+               call b_msg_5(null(), FIDDLE_$, self.noid,
+                    C64_TOKEN_denom_offset, 2, selft.denom_lo,
+                    selft.denom_hi);
+               call b_msg_1(null(), GOAWAY_$, obj.noid);
+               call destroy_object(obj.noid);
+          end;
+          if (pos_y = -1) then do; 
+               if (self.class ^= CLASS_PAPER) then goto putFAIL;
+               call r_msg_1(NORM, FAILURE);
+               put_success = true;
+               return;
+          end;
+     end;
+     if (^available(container_id, pos_x, pos_y)) then do;
+          call object_say(S_PAC, container_id, 'The container is full.');
+          goto putFAILend;
+     end;
+     if (self.gen_flags(RESTRICTED) & ^cont.gen_flags(RESTRICTED) &
+          cont.noid ^= THE_REGION) then do;
+          call object_say(S_PAC, container_id, 'You can''t put that in there.');
+          goto putFAILend;
+     end;
+     if (self.class = CLASS_MAGIC_LAMP & self.gr_state=MAGIC_LAMP_GENIE) then do;
+          call object_say(S_PAC, self.noid, 'You can''t put down a Genie!');
+          goto putFAILend;
+     end;
+     if (self.class = CLASS_FLAG & cont.noid ^= THE_REGION) then
+          goto putFAIL;
+     if (cont.noid = THE_REGION & pos_y < 128) then goto putFAIL;
+     if (cont.noid = THE_REGION & ( pos_x <8 | pos_x > 152)) then goto putFAIL;
+     if (^change_containers(self.noid, container_id, pos_y, false)) then
+          goto putFAIL;
+
+     /* If putting down paper, it might disappear.  Check. */
+     if (self.class = CLASS_PAPER) then
+          going_away_flag = selfp.text_id <= NULL;
+     else
+          going_away_flag = false;
+
+     /* If putting to the region, set the (x, y) coordinates */
+     if (cont.noid = THE_REGION) then do;
+          if (self.class = CLASS_GAME_PIECE) then do;
+               call clear_bit(pos_y, 8);
+               call     b_msg_2(null(), PLAY_$,128+0,self.noid);
+          end;
+          self.x = pos_x;
+          self.y = pos_y;
+          if (obj_orient = 1) then
+               call set_bit(self.orientation,1);
+          else
+               call clear_bit(self.orientation,1);
+     end;
+
+     /* If putting into a display case, adjust the locked bit */
+     else if (cont.class = CLASS_DISPLAY_CASE & ^going_away_flag) then do;
+          dcont.locked(self.position+1) = (avatar_userid = dcont.owner);
+          dcont.gen_flags(MODIFIED) = true;
+          end;
+
+     /* If the object is a switched on flashlight and is being put into an
+        opaque container, turn down the lights. */
+     if (self.class = CLASS_FLASHLIGHT) then do;
+          if (self.on = SUCCESS) then do;
+               if (container_is_opaque(cont.class, pos_y)) then do;
+                    current_region.lighting = current_region.lighting -1;
+                    call b_msg_1(null(), CHANGELIGHT_$, -1);
+               end;
+          end;
+     end;
+
+     /* If the object is a head, set its gr_state to the dormant mode */
+     if (self.class = CLASS_HEAD & container_id ^= avatar.noid) then
+          self.gr_state = HEAD_GROUND_STATE;
+
+     /* Where an object is put determines the choreography required */
+     if (container_id = avatar.noid)
+          then how = TO_AVATAR;
+          else how = TO_GROUND;
+
+     /* Inform the world! */
+     self.gen_flags(MODIFIED) = true;
+     call checkpoint_object (0, self.noid);
+     put_success = true;
+     call n_msg_6(avatarptr, PUT$, self.noid, container_id, pos_x, pos_y, how, self.orientation);
+     call r_msg_2(NORM, SUCCESS,pos_y);
+
+     /* If putting into a pawn machine, announce the value of the object */
+     if (cont.class = CLASS_PAWN_MACHINE) then
+          call object_say(NORM, cont.noid, 'Item value: $' ||
+               ltrim(item_value(selfptr)));
+
+     return;
+
+putFAILend:
+     msg_type = E_PAC;
+putFAIL:
+     put_success = false;
+     call     r_msg_1(msg_type, FAILURE);
+end generic_PUT;
+
+generic_THROW: procedure;
+     declare target_id binary(15);
+     declare target_y binary(15);
+     declare new_y binary(15);
+     declare targetptr pointer;
+     declare target_x binary(15);
+     declare new_x binary(15);
+     declare 1 target based(targetptr) %include 'struct_flat';
+     declare dummy bit(1) aligned;
+
+     target_id = rank(request(FIRST));
+     target_x = rank(request(SECOND));
+     target_y = rank(request(THIRD));
+     new_x = target_x;
+     new_y = target_y;
+
+     targetptr = ObjList(target_id);
+
+     /* Various ways THROW can fail:
+          the target noid specified by the C64 is invalid OR
+          it's trying to throw a magic lamp in the genie state OR
+          the Avatar is not holding the object OR
+          the target class specified by the C64 is not allowed OR
+          the call to change_containers fails because there is not enough room
+               (this should never happen, since the object is already out, but
+               we check just in case)
+
+       As before, we use (*eeeyyyyyuuuuu*) goto's to simplify.
+     */
+     if (targetptr = null()) then
+          goto throwFAIL;
+     if (self.class = CLASS_MAGIC_LAMP & self.gr_state=MAGIC_LAMP_GENIE) then do;
+          call object_say(NORM, self.noid, 'You can''t throw a Genie!');
+          goto throwFAIL;
+     end;
+     if (^holding(selfptr)) then
+          goto throwFAIL;
+
+     /* If target isn't open ground, object doesn't move */
+     if (target.class ^= CLASS_STREET & target.class ^= CLASS_GROUND) then do;
+          if (target.class ^= CLASS_FLAT & target.class ^= CLASS_TRAPEZOID
+                    & target.class ^= CLASS_SUPER_TRAPEZOID) then
+               goto throwFAIL;
+          if (target.flat_type ^= GROUND_FLAT) then
+               goto throwFAIL;
+     end;
+
+     if (target_x > 152 | target_x <8) then goto throwFAIL;
+
+     /* Hook for collision detection */
+/*     call check_path(target_id, target_x, target_y, new_x, new_y, dummy);*/
+
+     /* This check says, simply, "did it go where it was aimed?" */
+     if (new_x ^= target_x | new_y ^= target_y) then
+          goto throwFAIL;
+
+     if (^ change_containers(self.noid, THE_REGION, 0, false)) then do;
+          call trace_msg('*ERR* change_containers fails: generic_THROW');
+          goto throwFAIL;
+     end;
+
+     /* Clamp y-coord at region depth */
+     call clear_bit(new_y, 8);
+     if (new_y > current_region.depth) then new_y = current_region.depth;
+     if (self.class ^= CLASS_GAME_PIECE) then
+          call set_bit(new_y, 8);
+     else
+          call     b_msg_2(null(),PLAY_$,128+0,self.noid);
+
+     /* Put the object there */
+     self.x = new_x;
+     self.y = new_y;
+     call clear_bit(self.orientation,1);
+
+     /* If it's a head, set its gr_state to the ground mode */
+     if (self.class = CLASS_HEAD) then
+          self.gr_state = HEAD_GROUND_STATE;
+
+     self.gen_flags(MODIFIED) = true;
+     call checkpoint_object (0, self.noid);
+
+     /* Tell all the world */
+     call n_msg_4(avatarptr, THROW$, target_id, new_x, new_y, SUCCESS);
+     call r_msg_4(NORM, target_id, new_x, new_y, SUCCESS);
+
+     /* throw_success is a global interrogated by others */
+     throw_success = true;
+     return;
+
+throwFAIL:
+     /* General case failure */
+     call r_msg_4(NORM, target_id, self.x, self.y, FAILURE);
+     throw_success = false;
+end generic_THROW;
+%page;
+
+generic_READMAIL: procedure;
+     declare 1 self based(selfptr) %include 'struct_mailbox';
+     declare more_mail binary(15);
+
+     more_mail = FAILURE;
+     if (/*self.mail_arrived = SUCCESS &*/ empty_handed(avatarptr) &
+               self.owner = UserList(avatar.avatarslot)->player.U_Id) then do;
+          call get_mail_message (avatarptr);
+     end; else
+          call r_msg_2(NORM, more_mail, NULL);
+end generic_READMAIL;
+
+dead_generic_READMAIL_result: procedure (message_id,more_mail);
+     declare message_id binary(31);
+     declare more_mail  binary(15);
+
+     declare 1 result based(resultptr) %include 'struct_paper';
+     declare resultptr pointer;
+
+     if (message_id ^= 0) then do;
+          resultptr = create_object(CLASS_PAPER,0,0,0,HANDS,0,0,avatar.noid);
+          if (resultptr = null()) then do;
+               call r_msg_2(NORM, more_mail, NULL);
+               return;
+          end;
+          result.text_id = message_id;
+          call announce_object(resultptr);
+          call r_msg_1_s(NORM, more_mail, vectorize(resultptr));
+     end; else;
+          call r_msg_2(NORM, more_mail, NULL);
+
+end dead_generic_READMAIL_result;
+
+generic_SENDMAIL: procedure;
+     declare letter_id binary(15);
+     declare 1 letter based(letterptr) %include 'struct_paper';
+     declare letterptr pointer;
+     declare result binary(15);
+
+     if (holding_class(CLASS_PAPER)) then do;
+          letter_id = avatar.contents->element(HANDS);
+          letterptr = ObjList(letter_id);
+          if (letter.text_id <= 0)
+             then result = false;
+             else result = send_mail_message(avatarptr,letter.text_id);
+          if (result = SUCCESS) then
+               call disappear_object(letter_id);
+     end; else
+          result = FAILURE;
+     call r_msg_1(NORM, result);
+end generic_SENDMAIL;
+%page;
+/* actions_door:                                            */
+
+generic_OFF: procedure;
+     declare 1 self based(selfptr) %include 'struct_gen_switch';
+
+     if (^elsewhere(selfptr) & self.on = SUCCESS) then do;
+          call r_msg_1(NORM, SUCCESS);
+          self.on = FAILURE;
+          self.gen_flags(MODIFIED) = true;
+          if (self.class = CLASS_FLASHLIGHT | self.class = CLASS_FLOOR_LAMP) then
+               current_region.lighting = current_region.lighting - 1;
+          call n_msg_0(selfptr, OFF$);
+          if (self.class = CLASS_FLASHLIGHT) then self.gr_state = FAILURE;
+     end;
+     else call r_msg_1(NORM, FAILURE);
+end generic_OFF;
+
+generic_ON: procedure;
+     declare 1 self based(selfptr) %include 'struct_gen_switch';
+
+     if (^elsewhere(selfptr) & self.on = FAILURE) then do;
+          call r_msg_1(NORM, SUCCESS);
+          self.on = SUCCESS;
+          self.gen_flags(MODIFIED) = true;
+          if (self.class = CLASS_FLASHLIGHT | self.class = CLASS_FLOOR_LAMP) then
+               current_region.lighting = current_region.lighting + 1;
+          call n_msg_0(selfptr, ON$);
+          if (self.class = CLASS_FLASHLIGHT) then self.gr_state = SUCCESS;
+     end;
+     else call r_msg_1(NORM, FAILURE);
+end generic_ON;
+%page;
+
+/* actions_help:                                            */
+generic_HELP: procedure options(main);
+     declare msg_id bin(15);
+
+     declare help_msg_text(0:59) character(114) varying static init(
+'This object does not exist.',
+'For HELP, point at an object and press the F7 key.',
+'Sorry, no help here yet.',
+'ERROR - Please report this message.',
+'ATM: DO displays account balance.  GET withdraws tokens.  PUT deposits tokens into your account.',
+'BALL: Recommended for ages 3 through adult.',
+'BOOMERANG: Do not use in enclosed spaces.',
+'BOTTLE: GET from water source to fill.  DO at target to pour.',
+'User assumes all responsibility for consequences of use.',
+'COMPASS: Arrow points towards West Pole.',
+'Acme Countertop Co.',
+'Fragile, do not drop.',
+'DIE: DO rolls the die',
+'Acme Display Case Co.',
+'PILLS: Take only as directed.  Select DO to consume.',
+'Select DO to activate.',
+'Use with care.',
+'"Soldier ask not, now or ever, where to war your banners go..."',
+'FRISBEE: Do not use near powerlines.',
+'GARBAGE CAN: DO flushes contents.',
+'Use with care.',
+'How dare you!',
+'Add water to activate.',
+'KEY: Hold while opening or closing door or container. If key matches lock, it will lock or unlock it.',
+'Point sharp end towards victim.',
+'MAGIC LAMP: DO rubs lamp and calls Genie.  TALK to Genie to make wish.  Phrase your wish *carefully*!',
+'MAILBOX: Out of order.',
+'Select DO to turn on or off.',
+'PAPER: Select DO to read from or write on paper.',
+'What''s the matter?  Can''t you read?',
+'Acme Landscaping Company',
+'Acme Quarries, Ltd.',
+'Select DO to turn on or off.',
+'TOKENS: DO displays denomination. Enter amount to be kept in hand or press RETURN.',
+'Select DO to wind.',
+'CHANGE-O-MATIC: Point at wall or furniture, then select DO.',
+'VENDO: DO displays next selection.  PUT tokens here to purchase item on display.',
+'SHOVEL: Point at ground and select DO to dig.',
+'CHANGE MACHINE: Select DO for change.',
+'STUN GUN: do not overuse.',
+'BODY SPRAYER: Point at desired limb, then select DO to color that limb.',
+'PAWN MACHINE: PUT item inside, then DO to receive tokens in exchange for item',
+'Glub, glub.  Two fish in a tub.',
+'BED: If standing by bed, point at it and select GO to sit.  If sitting, point at bed and GO to stand again.',
+'"Beware of troll"',
+'Point at building and GO to enter.',
+'Acme Landscaping Co.',
+'CHAIR: If standing by chair, point at it and select GO to sit.  If sitting, point at chair and GO to stand again.',
+'The management is not responsible for tokens lost in this machine.',
+'COUCH: If standing by couch, point at it and select GO to sit.  If sitting, point at couch and GO to stand again.',
+'Acme Fence Co.',
+'PUT tokens for significant message.',
+'FOUNTAIN',
+'"Meow!"',
+'Acme Hot Tub Co.',
+'Acme Streetlamp Co.',
+'Acme Table Co.',
+'Acme Landscaping Co.',
+'Acme Window Co.',
+'BUREAUCRAT: TALK sends your request to the bureaucracy.  Please be sure this is the right bureaucrat.'
+     );
+
+declare help_msg_id(0:158) bin(15) static init (
+/*  0   1   2   3   4   5   6   7   8   9   */
+
+    3,  3,  3,  0,  4,  3,  3,  5,  0,  0,
+    3,  6,  7,  3,  0,  0,  8,  9, 10,  0,
+   11, 12, 13,  3,  1, 14, 15, 16,  3, 17,
+    3, 18, 19,  3,  0,  3,  1, 20, 21,  3,
+   22,  3, 23,  3, 24, 25,  3,  3, 26,  0,
+    0,  0, 27,  0, 28,  3, 29, 29, 30,  0,
+    3, 31,  0, 32,  3,  0,  0,  0,  0,  1,
+    2,  2,  0,  0,  3,  3, 33,  0,  0,  0,
+    1,  0, 34,  0, 35, 36,  3,  1,  1, 37,
+   38, 39,  1,  1,  0, 40, 41,  3,  1,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  3,  0, 42,
+   43, 44, 45, 46, 47,  3, 48, 49, 50,  3,
+   51, 52,  0, 53, 54,  2,  0,  1,  1,  3,
+    3,  0, 29,  1, 55, 56, 57, 58, 59       );
+
+     msg_id = help_msg_id(self.class);
+     if (msg_id = 3)
+          then call trace_msg ('Impossible help request, class ' || 
+                               ltrim(self.class) || ', id ' ||
+                               ltrim(self.obj_id));
+
+     call r_msg_s(NORM, help_msg_text(msg_id));
+
+end generic_HELP;
+
+%page;
+
+/* actions_weapon:                                          */
+
+%replace SIT_GROUND by 132;
+
+%replace MISS    by 0; /* no effect, beep at player */
+%replace DESTROY by 1; /* destroy object that is target */
+%replace HIT     by 2; /* keester avatar that is target */
+%replace DEATH   by 3; /* kill avatar that is target */
+
+generic_ATTACK: procedure;
+     declare target_id binary(15);
+     declare 1 target based(targetptr) %include 'struct_avatar';
+     declare targetptr pointer;
+     declare 1 cont based(contptr) %include 'struct_gen_container';
+     declare contptr pointer;
+     declare result binary(15);
+
+     target_id = rank(request(FIRST));
+     targetptr = ObjList(target_id);
+     if (targetptr = null()) then do;
+          call r_msg_1(NORM, FAILURE);
+          return;
+     end;
+     if (avatar.stun_count > 0) then do;
+        result = FAILURE;
+        call p_msg_s(NORM, avatarptr, avatarptr, SPEAK$,
+               'I can''t attack.  I am stunned.');
+     end; else if (current_region.nitty_bits(WEAPONS_FREE)) then do;
+        result = FAILURE;
+        call object_say(NORM, self.noid,
+          'This is a weapons-free zone.  Your weapon will not operate here.');
+     end; else if(adjacent(targetptr) | is_ranged_weapon(self.class)) then do;
+          if (target.class = CLASS_HEAD) then do;
+               if (target.container ^= THE_REGION &
+                         target.position = HEAD) then do;
+                    contptr = ObjList(target.container);
+                    if (cont.class = CLASS_AVATAR) then do;
+                         targetptr = contptr;
+                         target_id = cont.noid;
+                    end;
+               end;
+          end;
+          if (target.class = CLASS_AVATAR) then do;
+               result = damage_avatar(targetptr, selfptr);
+               target.activity = SIT_GROUND;
+               call n_msg_2(avatarptr, ATTACK$, target_id, result);
+          end; else do;
+               result = damage_object(targetptr, selfptr);
+               call n_msg_2(avatarptr, BASH$, target_id, result);
+          end;
+     end; else
+          result = FAILURE;
+     call r_msg_2(NORM, result, target_id);
+
+     /* Important not to kill avatar before response message goes out! */
+     if (result = DEATH) then do;
+          call kill_avatar(targetptr);
+/*        call inc_record(avatarptr, HS$kills);   */
+     end;
+end generic_ATTACK;
+
+/*
+ * is_ranged_weapon -- Return true iff the the given class corresponds to a
+ *   ranged weapon.
+ *
+ */
+is_ranged_weapon: procedure(class) returns(bit(1));
+     declare class binary(15);
+
+     return(class = CLASS_GUN);
+end is_ranged_weapon;
+
+/*
+ * damage_avatar -- Apply injury effects to an avatar struck by a weapon.
+ *   Exact effects depend upon the weapon, the range, and whether or not the
+ *   avatar is protected by some artificial means.
+ *
+ */
+damage_avatar: procedure(whoptr, weaponptr) returns(binary(15));
+     declare 1 who based(whoptr) %include 'struct_avatar';
+     declare whoptr pointer;
+     declare 1 weapon based(weaponptr) %include 'struct_gen_object';
+     declare weaponptr pointer;
+     declare result binary(15);
+
+     if (weapon.gen_flags(POWERFUL))
+          then result = DEATH;     /* He's dead! */
+          else result = HIT;       /* Naw, he's only wounded */
+
+     return(result);
+
+end;
+
+/*
+ * damage_object -- Destroy or don't destroy an object that has been struck by
+ *   a weapon.  Result ultimately should depend on a combination of weapon's
+ *   destructive power and object's intrinsic resisance to damage, but that's
+ *   for the future.
+ *
+ */
+damage_object: procedure(targetptr, weaponptr) returns(binary(15));
+     declare 1 target based(targetptr) %include 'struct_gen_object';
+     declare targetptr pointer;
+     declare 1 weapon based(weaponptr) %include 'struct_gen_object';
+     declare weaponptr pointer;
+     declare result binary(15);
+
+     /* For now, always destroy the target.  A more sophisticated procedure
+        will be substituted later. */
+     if (damageable(target.class)) then do;
+          result = DESTROY;
+          call destroy_object(target.noid);
+     end; else 
+          result = FAILURE;
+     return(result);
+end damage_object;
+
+damageable: procedure(class) returns(bit(1) aligned);
+     declare class binary(15);
+
+     return (false);               /* more later as we get fancier */
+end damageable;
+
+/* actions_oracle:                                          */
+
+generic_SPEAK: procedure;
+
+declare avatar_SPEAK entry;
+
+     request_string = byte(self.noid) || request_string;
+     call avatar_SPEAK;
+
+end generic_SPEAK;
